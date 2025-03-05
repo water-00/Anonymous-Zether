@@ -31,10 +31,10 @@ contract ZSC {
 
     constructor(address _coin, address _zether, address _burn, uint256 _epochLength) { // visibiility won't be needed in 7.0
         // epoch length, like block.time, is in _seconds_. 4 is the minimum!!! (To allow a withdrawal to go through.)
-        coin = CashToken(_coin);
-        zetherVerifier = ZetherVerifier(_zether);
-        burnVerifier = BurnVerifier(_burn);
-        epochLength = _epochLength;
+        coin = CashToken(_coin); // CashToken.address
+        zetherVerifier = ZetherVerifier(_zether); // ZetherVerifier.address
+        burnVerifier = BurnVerifier(_burn); // BurnVerifier.address
+        epochLength = _epochLength; // 6 seconds
         fee = zetherVerifier.fee();
         Utils.G1Point memory empty;
         pending[keccak256(abi.encode(empty))][1] = Utils.g(); // "register" the empty account...
@@ -43,11 +43,14 @@ contract ZSC {
     function simulateAccounts(Utils.G1Point[] memory y, uint256 epoch) view public returns (Utils.G1Point[2][] memory accounts) {
         // in this function and others, i have to use public + memory (and hence, a superfluous copy from calldata)
         // only because calldata structs aren't yet supported by solidity. revisit this in the future.
+
+        // 这个函数只是"模拟"了最新一轮结束时的[CLn, CRn], 并没有"修改"acc的内容
         uint256 size = y.length;
         accounts = new Utils.G1Point[2][](size);
         for (uint256 i = 0; i < size; i++) {
-            bytes32 yHash = keccak256(abi.encode(y[i]));
-            accounts[i] = acc[yHash];
+            bytes32 yHash = keccak256(abi.encode(y[i])); // 用公钥y[i]获得钱包地址
+            accounts[i] = acc[yHash]; // 用钱包地址读取[CLn, CRn]
+            // 如果账户的上次更新epoch小于当前epoch, 则把pending中的余额加到[CLn, CRn]里去
             if (lastRollOver[yHash] < epoch) {
                 Utils.G1Point[2] memory scratch = pending[yHash];
                 accounts[i][0] = accounts[i][0].add(scratch[0]);
@@ -56,19 +59,27 @@ contract ZSC {
         }
     }
 
+
+
+
+    // 传入钱包地址, 更新acc = acc + pending
     function rollOver(bytes32 yHash) internal {
-        uint256 e = block.timestamp / epochLength;
+        uint256 e = block.timestamp / epochLength; // 当前epoch
         if (lastRollOver[yHash] < e) {
-            Utils.G1Point[2][2] memory scratch = [acc[yHash], pending[yHash]];
-            acc[yHash][0] = scratch[0][0].add(scratch[1][0]);
-            acc[yHash][1] = scratch[0][1].add(scratch[1][1]);
+            Utils.G1Point[2][2] memory scratch = [acc[yHash], pending[yHash]]; // 临时存储acc, pending
+            // scratch结构: 
+            // [[acc[yHash][0], acc[yHash][1]], 对应主账户CLn, CRn
+            // [pending[yHash][0], pending[yHash][1]]] 对应调整分量deltaC, deltaD
+            // 忽然好奇Solidity支持x = x + y这种表达式吗, 是不是为了避免这种表达式引入scratch
+            acc[yHash][0] = scratch[0][0].add(scratch[1][0]); // CLn' = CLn + deltaC
+            acc[yHash][1] = scratch[0][1].add(scratch[1][1]); // CRn' = CRn + deltaD
             // acc[yHash] = scratch[0]; // can't do this---have to do the above instead (and spend 2 sloads / stores)---because "not supported". revisit
-            delete pending[yHash]; // pending[yHash] = [Utils.G1Point(0, 0), Utils.G1Point(0, 0)];
+            delete pending[yHash]; // pending[yHash] = [Utils.G1Point(0, 0), Utils.G1Point(0, 0)]; pending[yHash]更新完毕, 清空
             lastRollOver[yHash] = e;
         }
         if (lastGlobalUpdate < e) {
             lastGlobalUpdate = e;
-            delete nonceSet;
+            delete nonceSet; // 如果当前epoch是最新epoch, 那清空uHash
         }
     }
 
@@ -105,14 +116,20 @@ contract ZSC {
     }
 
     function transfer(Utils.G1Point[] memory C, Utils.G1Point memory D, Utils.G1Point[] memory y, Utils.G1Point memory u, bytes memory proof, Utils.G1Point memory beneficiary) public {
+        // C: 匿名集中每个账户的余额变化 (ElGamal密文左分量)
+        // D: 公共随机点, D = r·G, 用来加密调整 (ElGamal密文右分量) ? 没懂D到底是干嘛的
+        // y: 匿名集公钥
+        // u: 绑定用户私钥和epoch的Nonce, u = G_epoch * x, 防止重放攻击
+        // proof: 为了让交易通过而零知识证明 (金额守恒, 私钥有效性)
+        // beneficiary: 手续费接收方公钥
         uint256 size = y.length;
         Utils.G1Point[] memory CLn = new Utils.G1Point[](size);
         Utils.G1Point[] memory CRn = new Utils.G1Point[](size);
         require(C.length == size, "Input array length mismatch!");
 
-        bytes32 beneficiaryHash = keccak256(abi.encode(beneficiary));
+        bytes32 beneficiaryHash = keccak256(abi.encode(beneficiary)); // 手续费接收方钱包地址
         require(registered(beneficiaryHash), "Miner's account is not yet registered."); // necessary so that receiving a fee can't "backdoor" you into registration.
-        rollOver(beneficiaryHash);
+        rollOver(beneficiaryHash); // 把手续费地址在前一个epoch的pending余额合并的acc
         pending[beneficiaryHash][0] = pending[beneficiaryHash][0].add(Utils.g().mul(fee));
 
         for (uint256 i = 0; i < size; i++) {
@@ -120,15 +137,19 @@ contract ZSC {
             require(registered(yHash), "Account not yet registered.");
             rollOver(yHash);
             Utils.G1Point[2] memory scratch = pending[yHash];
+
+            // 更新pending余额的左分量C[i]和右分量D
             pending[yHash][0] = scratch[0].add(C[i]);
             pending[yHash][1] = scratch[1].add(D);
             // pending[yHash] = scratch; // can't do this, so have to use 2 sstores _anyway_ (as in above)
 
+            // CLn[i]和CRn[i]是更新后的加密余额, 用于零知识证明验证
             scratch = acc[yHash]; // trying to save an sload, i guess.
             CLn[i] = scratch[0].add(C[i]);
             CRn[i] = scratch[1].add(D);
         }
 
+        // 防重放攻击 (同一交易被重复提交)
         bytes32 uHash = keccak256(abi.encode(u));
         for (uint256 i = 0; i < nonceSet.length; i++) {
             require(nonceSet[i] != uHash, "Nonce already seen!");
@@ -137,10 +158,12 @@ contract ZSC {
 
         require(zetherVerifier.verifyTransfer(CLn, CRn, C, D, y, lastGlobalUpdate, u, proof), "Transfer proof verification failed!");
 
-        emit TransferOccurred(y, beneficiary);
+        emit TransferOccurred(y, beneficiary); // 发射一个事件
+        // require(false, "DEBUG: TransferOccurred emitted"); // 强制回滚，观察日志
     }
 
     function burn(Utils.G1Point memory y, uint256 bTransfer, Utils.G1Point memory u, bytes memory proof) public {
+        // bTransfer = 要烧毁的value
         bytes32 yHash = keccak256(abi.encode(y));
         require(registered(yHash), "Account not yet registered.");
         rollOver(yHash);
@@ -150,7 +173,7 @@ contract ZSC {
         pending[yHash][0] = scratch[0].add(Utils.g().mul(bTransfer.neg()));
 
         scratch = acc[yHash]; // simulate debit of acc---just for use in verification, won't be applied
-        scratch[0] = scratch[0].add(Utils.g().mul(bTransfer.neg()));
+        scratch[0] = scratch[0].add(Utils.g().mul(bTransfer.neg())); // 模拟扣款后的acc用于验证证明, 实际上的扣款是先在pending扣, 在下一个epoch把pending的扣款加到acc上
         bytes32 uHash = keccak256(abi.encode(u));
         for (uint256 i = 0; i < nonceSet.length; i++) {
             require(nonceSet[i] != uHash, "Nonce already seen!");

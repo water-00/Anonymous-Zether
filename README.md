@@ -74,7 +74,7 @@ The contracts `ZSC` and `CashToken` should be imported in `node` using Truffle's
 > ZSC.setProvider(provider);
 > ZSC.deployed();
 > let zsc;
-> ZSC.at(ZSC.address).then((result) => { zsc = result; });
+> ZSC.at(ZSC.address).then((result) => { zsc = result; }); // 这里要避免zsc在ZSC.at()异步操作返回前被赋值, 所以用.then
 ```
 Following the example above, import CashToken:
 ```javascript

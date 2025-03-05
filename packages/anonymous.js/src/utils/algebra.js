@@ -6,13 +6,17 @@ const utils = require('../utils/utils.js');
 
 class PedersenCommitment {
     static base = {
+        // g和h的生成方法: 对"G", "H"取哈希, 然后丢给utils.mapInt, 得到椭圆曲线群循环中的一个点: (hash("G"), y) such that y^2 \equiv x^3 + 3 \mod p
+        // soliditySha3应该就是keccak256, output是32字节 (256 bit)
+        // 得到的g, h类型是bn128.curve.point(x: BNInput, y: BNInput, isRed?: boolean): short.ShortPoint
         'g': utils.mapInto(soliditySha3("G")),
         'h': utils.mapInto(soliditySha3("H")),
     }
-
+    
     constructor(point) {
-        this._commit = (value, randomness) => { // both args are already-reduced BNs
+        this._commit = (value, randomness) => { // 两个参数都是已经处理过的BN类型
             this.randomness = randomness;
+            // (p.x, p.y) = (g.x, g.y) * value + (h.x, h.y) * randomness
             point = PedersenCommitment.base['g'].mul(value).add(PedersenCommitment.base['h'].mul(randomness));
         };
         this.point = () => point;
@@ -52,6 +56,7 @@ class PointVector {
         this.flip = () => new PointVector(Array.from({ length: this.length() }).map((_, i) => vector[(this.length() - i) % this.length()]));
         this.extract = (parity) => new PointVector(vector.filter((_, i) => i % 2 === parity));
         this.negate = () => new PointVector(vector.map((elem) => elem.neg()));
+        // accum = sum(vector[i] * exponents[i])
         this.multiExponentiate = (exponents) => exponents.getVector().reduce((accum, cur, i) => accum.add(vector[i].mul(cur)), bn128.zero);
         this.sum = () => vector.reduce((accum, cur) => accum.add(cur), bn128.zero);
         this.add = (other) => new PointVector(other.getVector().map((elem, i) => vector[i].add(elem)));
@@ -74,6 +79,7 @@ class ElGamalVector {
 
 class PedersenVectorCommitment {
     static base = { // hardcode length 64 for zether
+        // gs中的每个元素是不同的, 相当于把字符"G"和整数i连接然后取哈希
         'gs': new PointVector(Array.from({ 'length': 64 }).map((_, i) => utils.mapInto(soliditySha3("G", i)))),
         'hs': new PointVector(Array.from({ 'length': 64 }).map((_, i) => utils.mapInto(soliditySha3("H", i)))),
         'h': utils.mapInto(soliditySha3("H")),
@@ -82,12 +88,22 @@ class PedersenVectorCommitment {
 
     constructor(point) {
         this._commit = (gValues, hValues, randomness) => { // first args of type FieldVector?!
+            // console.log("检查 gs 和 hs 的内容：");
+            // console.log("gs[0]:", PedersenVectorCommitment.base['gs'].getVector()[0].getX().toString());
+            // console.log("gs[0]:", PedersenVectorCommitment.base['gs'].getVector()[0].getY().toString());
+            // console.log("gs[1]:", PedersenVectorCommitment.base['gs'].getVector()[1].getX().toString());
+            // console.log("gs[1]:", PedersenVectorCommitment.base['gs'].getVector()[1].getY().toString());
+            // console.log("hs[0]:", PedersenVectorCommitment.base['hs'].getVector()[0].getX().toString());
+            // console.log("hs[0]:", PedersenVectorCommitment.base['hs'].getVector()[0].getY().toString());
+            // console.log("hs[1]:", PedersenVectorCommitment.base['hs'].getVector()[1].getX().toString());
+            // console.log("hs[1]:", PedersenVectorCommitment.base['hs'].getVector()[1].getY().toString());
+
             this.gValues = gValues;
             this.hValues = hValues;
             this.randomness = randomness;
-            point = PedersenVectorCommitment.base['h'].mul(randomness);
-            point = point.add(PedersenVectorCommitment.base['gs'].multiExponentiate(gValues));
-            point = point.add(PedersenVectorCommitment.base['hs'].multiExponentiate(hValues));
+            point = PedersenVectorCommitment.base['h'].mul(randomness); // h*r
+            point = point.add(PedersenVectorCommitment.base['gs'].multiExponentiate(gValues)); // sum(gValues[i]*gs[i])
+            point = point.add(PedersenVectorCommitment.base['hs'].multiExponentiate(hValues)); // sum(hValues[i]*hs[i])
         };
         this.point = () => point;
     }
@@ -107,9 +123,10 @@ class ElGamal {
     constructor(left, right) {
         this._commit = (key, value, randomness) => {
             this.randomness = randomness;
-            left = ElGamal.base['g'].mul(value).add(key.mul(randomness));
-            right = bn128.curve.g.mul(randomness);
+            left = ElGamal.base['g'].mul(value).add(key.mul(randomness)); // g*value + y*r, g*value大概就是把整数value转换成椭圆曲线群内的一个值 (m映射到群中的m'), key大概就是公钥
+            right = bn128.curve.g.mul(randomness); // r*g
         };
+        // left和right都是bn128.curve.point类型
         this.left = () => left
         this.right = () => right;
         this.zero = () => left.eq(bn128.zero) && right.eq(bn128.zero);

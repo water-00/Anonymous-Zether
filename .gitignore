@@ -2,3 +2,7 @@ build
 node_modules
 package-lock.json
 yarn-error.log
+logs.txt
+运行说明.md
+img_md
+docs
