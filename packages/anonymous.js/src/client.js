@@ -125,6 +125,7 @@ class Client {
 
         this.account = new function() {
             this.keypair = undefined; // 在register函数中被生成, keypair['x']是一个随机大整数, keypair['y'] = bn128.curve.g.mul(x); 椭圆曲线上的一个点(y.x, y.y)
+            this.name = undefined;
             this._state = {
                 available: 0,
                 pending: 0,
@@ -173,7 +174,7 @@ class Client {
             };
         };
 
-        this.register = (secret) => {
+        this.register = (name, secret) => {
             return Promise.all([zsc.methods.epochLength().call(), zsc.methods.fee().call()]).then((result) => {
                 epochLength = parseInt(result[0]); // 转换为整数
                 fee = parseInt(result[1]);
@@ -187,7 +188,8 @@ class Client {
                             })
                             .on('receipt', (receipt) => { // 签名接收
                                 that.account.keypair = keypair;
-                                console.log("Registration successful.");
+                                that.account.name = name;
+                                console.log(name + " Registration successful.");
                                 resolve();
                             })
                             .on('error', (error) => {
@@ -204,6 +206,7 @@ class Client {
                         .call().then((result) => {
                             const simulated = result[0];
                             that.account._state.available = utils.readBalance(simulated[0], simulated[1], x); // 恢复余额, simulated是什么得去读.sol代码, 但是感觉有点像自己给自己发了一笔(C, D, x)
+                            that.account.name = name;
                             console.log("Account recovered successfully.");
                             resolve(); // warning: won't register you. assuming you registered when you first created the account.
                         });
@@ -274,18 +277,16 @@ class Client {
                 throw "Anonset's size (including you and the recipient) must be a power of two. Add " + (next - size) + " or remove " + (size - previous) + ".";
             }
 
-            // 如果在上一轮转账结束时改变了接收者的密钥, 那这里friends装的还是旧公钥...
-            // 在上一轮转账结束时要更新friends中除了发送者的公钥也可以, 把account加个name字段, 然后在监听器中更新friends[account.name]的公钥
-            // 那新一轮转账开始, 上一轮的接收者, 混淆者拿的都是新公钥, 组成了这轮的y
-            // 导致的问题是zsc.methods.simulateAccounts(y.map(bn128.serialize), getEpoch())根本查不到信息
-            // 链上不可能进行椭圆曲线运算, 不可能更新新公钥啊...不对好像调用zsc.transfer时会发new_y
-            // 对哦, 链上用new_y更新pending之类的key就行了 (更新字典的key? 真的假的, 可能就是删除pending[yHash]新建pending[new_yHash]), 链下就更新friends中的公钥
+            // 我们选择在如下时间点更新不同地方储存的sk, pk
+            // 1. 在zsc.methods.transfer上区块执行时, 更新Solidity中pending存的pk (更新字典的key, 可能就是删除pending[yHash]新建pending[new_yHash] = [new_y, balance])
+            // 2. 在zsc.methods.transfer返回receipt后, 更新发送者的`friends`中的pk
+            // 3. 在zsc.events.TransferOccurred({})监听到事件后, 监听者更新自己account的sk, pk
             const friends = this.friends.show(); // 得到的是一个字典, name->bn128.deserialize(pubkey)
             if (!(name in friends))
                 throw "Name \"" + name + "\" hasn't been friended yet!";
             if (account.keypair['y'].eq(friends[name]))
                 throw "Sending to yourself is currently unsupported (and useless!)."
-            const y = [account.keypair['y'], friends[name]]; // not yet shuffled (洗牌)
+            const y = [account.keypair['y'], friends[name]]; // not yet shuffled 现在就两个人
             decoys.forEach((decoy) => {
                 if (!(decoy in friends))
                     throw "Decoy \"" + decoy + "\" is unknown in friends directory!";
@@ -383,7 +384,7 @@ class Client {
                     
                     const new_y = y.map(party => ElGamal.base['g'].mul(delta).add(party)); // y[i]' = y[i] + g*delta
                     // console.log("y[0]: ", bn128.serialize(y[0])); // 忽然明白对于point优雅的打印方式就是bn128.serialize
-                    // console.log("y'[0]: ", bn128.serialize(new_y[0]));
+                    // console.log("new_y[0]: ", bn128.serialize(new_y[0]));
 
 
                     const proof = Service.proveTransfer(Cn, C, y, state.lastRollOver, account.keypair['x'], r, value, state.available - value - fee, index, fee);
@@ -439,8 +440,26 @@ class Client {
                                 account._state = account._simulate(); // have to freshly call it
                                 account._state.nonceUsed = true;
                                 account._state.pending -= value + fee;
+
                                 // console.log(receipt);
                                 console.log("Transfer of " + value + " (with fee of " + fee + ") was successful. Balance now " + (account._state.available + account._state.pending) + ".");
+
+                                // 更新friends中存的公钥信息
+                                console.log("friends pks before updated:");
+                                console.log(bn128.serialize(friends[name]));
+                                friends[name] = bn128.curve.g.mul(delta).add(friends[name]);
+                                decoys.forEach((decoy) => {
+                                    console.log(bn128.serialize(friends[decoy]));
+                                    friends[decoy] = bn128.curve.g.mul(delta).add(friends[decoy]);
+                                });
+
+                                console.log("friends pks after updated:");
+                                console.log(bn128.serialize(friends[name]));
+                                decoys.forEach((decoy) => {
+                                    console.log(bn128.serialize(friends[decoy]));
+                                });
+
+
                                 resolve(receipt);
                             })
                             .on('error', (error) => {
@@ -453,9 +472,11 @@ class Client {
         };
 
         this.withdraw = (value) => {
+
             if (this.account.keypair === undefined)
                 throw "Client's account is not yet registered!";
             const account = this.account;
+            console.log("withdraw address: ", bn128.serialize(account.keypair['y']));
             const state = account._simulate();
             if (value > state.available + state.pending)
                 throw "Requested withdrawal amount of " + value + " exceeds account balance of " + (state.available + state.pending) + ".";
@@ -478,6 +499,7 @@ class Client {
                 zsc.methods.simulateAccounts([bn128.serialize(account.keypair['y'])], getEpoch()).call()
                     .then((result) => {
                         // result = [CLn, CRn]
+                        console.log("result: ", result);
                         const deserialized = ElGamal.deserialize(result[0]);
                         const C = deserialized.plus(new BN(-value)); // C = CLn - value
                         const proof = Service.proveBurn(C, account.keypair['y'], state.lastRollOver, home, account.keypair['x'], state.available - value);
@@ -485,6 +507,7 @@ class Client {
                         zsc.methods.burn(bn128.serialize(account.keypair['y']), value, bn128.serialize(u), proof.serialize()).send({ 'from': home, 'gas': 6721975 })
                             .on('transactionHash', (hash) => {
                                 console.log("Withdrawal submitted (txHash = \"" + hash + "\").");
+                                // 至少运行到这了, 说明是没有收到receipt, zsc.methods.burn有问题
                             })
                             .on('receipt', (receipt) => {
                                 account._state = account._simulate(); // have to freshly call it
