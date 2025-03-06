@@ -143,6 +143,8 @@ class ElGamal {
     }
 
     static deserialize(account) {
+        // console.log(bn128.deserialize(account[0]));
+        // console.log(bn128.deserialize(account[1]));
         return new ElGamal(bn128.deserialize(account[0]), bn128.deserialize(account[1]));
     }
 }

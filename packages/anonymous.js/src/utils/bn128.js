@@ -11,6 +11,7 @@ const empty = "0x000000000000000000000000000000000000000000000000000000000000000
 const bn128 = {};
 
 // bn128方程: y^2 = x^3 + ax + b \mod FIELD_MODULUS, where a = 0, b = 3
+// y^2 = x^3 + 3符合Koblitz Curve
 bn128.curve = new EC.curve.short({
     a: '0',
     b: '3',

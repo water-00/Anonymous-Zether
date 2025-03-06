@@ -33,22 +33,22 @@ utils.readBalance = (CL, CR, x) => {
     CL = bn128.deserialize(CL); // Elgamal密文左分量, C[i]
     CR = bn128.deserialize(CR); // Elgamal密文右分量, D
 
-    // 提取CL的坐标值（十六进制）
-    const clXHex = CL.x.fromRed().toString(16);
-    const clYHex = CL.y.fromRed().toString(16);
-    console.log("CL.x (hex):", clXHex);
-    console.log("CL.y (hex):", clYHex);
+    // // 提取CL的坐标值（十六进制）
+    // const clXHex = CL.x.fromRed().toString(16);
+    // const clYHex = CL.y.fromRed().toString(16);
+    // console.log("CL.x (hex):", clXHex);
+    // console.log("CL.y (hex):", clYHex);
 
-    // 提取CR的坐标值（十六进制）
-    const crXHex = CR.x.fromRed().toString(16);
-    const crYHex = CR.y.fromRed().toString(16);
-    console.log("CR.x (hex):", crXHex);
-    console.log("CR.y (hex):", crYHex);
+    // // 提取CR的坐标值（十六进制）
+    // const crXHex = CR.x.fromRed().toString(16);
+    // const crYHex = CR.y.fromRed().toString(16);
+    // console.log("CR.x (hex):", crXHex);
+    // console.log("CR.y (hex):", crYHex);
 
-    // 做椭圆曲线坐标上的运算, 也就是解密过程, g^B = C[i] + D*(-x) = adjustment*g + r*y[i] - x*r*g = adjustment*g (因为y = g*x)
+    // 做椭圆曲线坐标上的运算, 也就是解密过程, g^B = C[i] + D*(-x) = pl*g + r*y[i] - x*r*g = pl*g (因为y = g*x)
     const gB = CL.add(CR.mul(x.redNeg())); // x.redNeg()是私钥x的负模值-x
-    console.log("gB.x: ", gB.x.fromRed().toString(16));
-    console.log("gB.y: ", gB.y.fromRed().toString(16));
+    // console.log("gB.x: ", gB.x.fromRed().toString(16));
+    // console.log("gB.y: ", gB.y.fromRed().toString(16));
 
 
     // 在椭圆曲线空间里搜索明文余额

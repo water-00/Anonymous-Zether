@@ -44,7 +44,7 @@ contract ZSC {
         // in this function and others, i have to use public + memory (and hence, a superfluous copy from calldata)
         // only because calldata structs aren't yet supported by solidity. revisit this in the future.
 
-        // 这个函数只是"模拟"了最新一轮结束时的[CLn, CRn], 并没有"修改"acc的内容
+        // 这个函数只是"模拟"了最新一轮结束时的[CLn, CRn] (把pending加上), 并没有"修改"acc的内容
         uint256 size = y.length;
         accounts = new Utils.G1Point[2][](size);
         for (uint256 i = 0; i < size; i++) {

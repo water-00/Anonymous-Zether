@@ -39,50 +39,50 @@ contract("ZSC", async (accounts) => {
     //     console.log("Gas Used: ", receipt.gasUsed);
     // });
 
-    it("should allow transferring without decoys or miner", async () => {
-        const zsc = await ZSC.deployed();
-        zuza = new Client(web3, zsc.contract, accounts[0]);
-        await zuza.register()
-        alice.friends.add("Zuza", zuza.account.public());
-        const receipt = await alice.transfer("Zuza", 40);
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        assert.equal(
-            zuza.account.balance(),
-            40,
-            "Transfer failed"
-        );
-
-        console.log("Gas Used: ", receipt.gasUsed);
-    });
-
-
-    // it("should allow transferring (2 decoys and miner)", async () => {
+    // it("should allow transferring without decoys or miner", async () => {
     //     const zsc = await ZSC.deployed();
-    //     bob = new Client(web3, zsc.contract, accounts[0]);
-    //     carol = new Client(web3, zsc.contract, accounts[0]);
-    //     dave = new Client(web3, zsc.contract, accounts[0]);
-    //     miner = new Client(web3, zsc.contract, accounts[0]);
-    //     await Promise.all([bob.register(), carol.register(), dave.register(), miner.register()]);
-    //     alice.friends.add("Bob", bob.account.public());
-    //     alice.friends.add("Carol", carol.account.public());
-    //     alice.friends.add("Dave", dave.account.public());
-    //     alice.friends.add("Miner", miner.account.public());
-    //     const receipt = await alice.transfer("Bob", 10, ["Carol", "Dave"], "Miner");
+    //     zuza = new Client(web3, zsc.contract, accounts[0]);
+    //     await zuza.register()
+    //     alice.friends.add("Zuza", zuza.account.public());
+    //     const receipt = await alice.transfer("Zuza", 40);
     //     await new Promise((resolve) => setTimeout(resolve, 100));
     //     assert.equal(
-    //         bob.account.balance(),
-    //         10,
+    //         zuza.account.balance(),
+    //         40,
     //         "Transfer failed"
-    //     );
-    //     const fee = await zsc.fee.call();
-    //     assert.equal(
-    //         miner.account.balance(),
-    //         fee,
-    //         "Fees failed"
     //     );
 
     //     console.log("Gas Used: ", receipt.gasUsed);
     // });
+
+
+    it("should allow transferring (2 decoys and miner)", async () => {
+        const zsc = await ZSC.deployed();
+        bob = new Client(web3, zsc.contract, accounts[0]);
+        carol = new Client(web3, zsc.contract, accounts[0]);
+        dave = new Client(web3, zsc.contract, accounts[0]);
+        miner = new Client(web3, zsc.contract, accounts[0]);
+        await Promise.all([bob.register(), carol.register(), dave.register(), miner.register()]);
+        alice.friends.add("Bob", bob.account.public());
+        alice.friends.add("Carol", carol.account.public());
+        alice.friends.add("Dave", dave.account.public());
+        alice.friends.add("Miner", miner.account.public());
+        const receipt = await alice.transfer("Bob", 10, ["Carol", "Dave"], "Miner");
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.equal(
+            bob.account.balance(),
+            10,
+            "Transfer failed"
+        );
+        const fee = await zsc.fee.call();
+        assert.equal(
+            miner.account.balance(),
+            fee,
+            "Fees failed"
+        );
+
+        console.log("Gas Used: ", receipt.gasUsed);
+    });
 
     // it("should allow transferring (2 decoys and NO miner)", async () => {
     //     const zsc = await ZSC.deployed();

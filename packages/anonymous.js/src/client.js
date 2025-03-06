@@ -77,15 +77,15 @@ class Client {
                                 });
                                 // 把`transfer`方法的参数列表inputs (二进制数据) 转换为可读的参数, slice(10)表明从第10个十六进制字符开始截, 跳过前10个字符(0x + 4字节函数选择器), 剩下的就是参数数据
                                 const parameters = web3.eth.abi.decodeParameters(inputs, "0x" + transaction.input.slice(10)); 
-                                console.log("parameters['C'][i].x: ", parameters['C'][i].x);
-                                console.log("parameters['C'][i].y: ", parameters['C'][i].y);
-                                console.log("parameters['D'].x: ", parameters['D'].x);
-                                console.log("parameters['D'].y: ", parameters['D'].y);
+                                // console.log("parameters['C'][i].x: ", parameters['C'][i].x);
+                                // console.log("parameters['C'][i].y: ", parameters['C'][i].y);
+                                // console.log("parameters['D'].x: ", parameters['D'].x);
+                                // console.log("parameters['D'].y: ", parameters['D'].y);
 
 
                                 const value = utils.readBalance(parameters['C'][i], parameters['D'], account.keypair['x']);
-                                // C[i]: 当前帐户在混淆地址列表中的加密余额 (椭圆曲线点)
-                                // D: 加密过程中生成的随机点 (用于解密), 与收到的转账金额有关
+                                // C[i] = y[i]*r + g*pl 当前帐户在混淆地址列表中的加密余额 (椭圆曲线点)
+                                // D = g*r 加密过程中生成的随机点 (用于解密)
                                 // x: 账户私钥 (大整数)
                                 // 大概就是用知道当前帐户余额, 解密得到转账金额, 得到更新后的账户余额
 
@@ -297,31 +297,68 @@ class Client {
                 index[1] = index[1] + (index[1] % 2 === 0 ? 1 : -1);
             } // make sure you and your friend have opposite parity
             return new Promise((resolve, reject) => {
-                // y.map: 对y的每个元素 (椭圆曲线点[y.x, y.y]) 调用bn128.serialize得到公钥, zsc.methods.simulateAccounts根据公钥模拟每个账户转账后的加密余额[CLn, CRn] (序列化格式), 这些加密余额组成的数组就是result
+                // y.map: 对y的每个元素 (椭圆曲线点[y.x, y.y]) 调用bn128.serialize得到公钥, simulateAccounts返回所有用户上一轮结束时的账户余额(oC[i], oD[i]) (序列化格式)
                 zsc.methods.simulateAccounts(y.map(bn128.serialize), getEpoch()).call().then((result) => {
-                    // const deserialized = result.map((account) => ElGamal.deserialize(account)); // 对result的每个元素执行ElGamal.deserialize, account负责遍历result中的每个元素, 把序列化加密余额变成椭圆曲线上的点了
-                    const deserialized = result.map(ElGamal.deserialize); // 从map语法上来说和上面那种写法应该是一样的吧
-                    if (deserialized.some((account) => account.zero())) // 是否存在account.zero()返回true, 如果存在, 则some()会返回true
+                    // const deserialized = result.map((account) => ElGamal.deserialize(account));
+                    const deserialized = result.map(ElGamal.deserialize); // 序列化坐标反序列化为数值, 然后转换为ElGamal格式, (oC[i], oD[i]) 
+                    // 其实ElGamal格式就只是把两个bn128.point放在一起而已, deserialized.map(bn128.serialize)就又回到result = (oC[i], oD[i]) 了
+                    // console.log("result: ", result);
+                    // console.log("deserialized: ", deserialized);
+                    // deserialized.map(account => {
+                    //     console.log(bn128.serialize(account.left()));
+                    //     console.log(bn128.serialize(account.right()));
+                    // })
+
+                    if (deserialized.some((account) => account.zero())) // ElGamal.zero(), 公钥或私钥为bn128.zero
                         return reject(new Error("Please make sure all parties (including decoys) are registered.")); // todo: better error message, i.e., which friend?
+                    
+                    
                     const r = bn128.randomScalar(); // 随机数, 一种可能的作用是当adjustment相同时, 也有r*y[i]使得每个地址的C[i]很不同, 避免泄露转账金额信息
-                    const D = bn128.curve.g.mul(r); // D = r*G
-                    const C = y.map((party, i) => { // 遍历所有公钥Y_i, C记录这笔转账对所有公钥造成的余额改变.
+                    const D = bn128.curve.g.mul(r); // 随机数信息
+                    const C = y.map((party, i) => { // 所有用户的余额变化信息(C[i], D)
                         const adjustment = new BN(i === index[0] ? -value - fee : i === index[1] ? value : 0);
-                        console.log("adjustment: ", adjustment) // new BN(num)就可以将num映射到椭圆曲线群中, 使用toString就能还原数字
+                        // console.log("adjustment: ", adjustment) // new BN(num)就可以将num映射到椭圆曲线群中, 使用toString就能还原数字
                         // console.log("adjustment.toRed(): ", adjustment.toRed().toString()); // Error
                         // console.log("adjustment.fromRed(): ", adjustment.fromRed().toString()) // Error
 
-                        const left = ElGamal.base['g'].mul(adjustment).add(party.mul(r)) // C[i] = adjustment*g + r*y[i]
-                        console.log("left.x: ", left.x.toString(16));
-                        console.log("left.y: ", left.y.toString(16));
+                        const left = ElGamal.base['g'].mul(adjustment).add(party.mul(r)); // C[i] = y[i]*r + g*pl
+                        
+                        // console.log("left.x: ", left.x.toString(16));
+                        // console.log("left.y: ", left.y.toString(16));
                         // console.log("left.x.toRed(): ", left.x.toRed().toString(16)); // Error: Already a number in reduction context
                         // console.log("left.y.toRed(): ", left.y.toRed().toString(16));
-                        console.log("left.x.fromRed(): ", left.x.fromRed().toString(16));
-                        console.log("left.y.fromRed(): ", left.y.fromRed().toString(16));
+                        // console.log("left.x.fromRed(): ", left.x.fromRed().toString(16));
+                        // console.log("left.y.fromRed(): ", left.y.fromRed().toString(16));
                         
-                        return new ElGamal(left, D)
+                        return new ElGamal(left, D);
                     });
-                    const Cn = deserialized.map((account, i) => account.add(C[i])); // 更新后的加密余额
+                    const Cn = deserialized.map((account, i) => account.add(C[i])); // 所有用户更新后的加密余额Cn = (nC[i], nD[i]) = (C[i], D) + (oC[i], oD[i])
+                    
+                    // console.log("C: ", C);
+                    // console.log("D: ", D);
+                    // console.log("Cn: ", Cn);
+
+                    // FUL Zether新增变量 E: point[], up: ElGamal[], new_y: point[], 丢进ZKP和zsc.transfer. E要丢给Solidity后端更新该轮结束后的(nC[i], nD[i])
+                    const new_r = bn128.randomScalar(); // 加密delta
+                    const delta = crypto.randomBytes(1).readUInt8(); // 用于更新receiver密钥, 现在生成[0, 255]的随机数而不是[0, q]
+                    const up_r = bn128.curve.g.mul(new_r); // g*r'
+
+                    const E = Cn.map(Cn_i => Cn_i.left().mul(delta));  // point type
+                    // console.log("E: ", E);
+
+                    const up = y.map((party, i) => {
+                        // 或许只有接收者要更新私钥, 混淆账户不用? 
+                        const up_l = ElGamal.base['g'].mul(delta).add(party.mul(new_r)); // up.l = y[i]*r' + g*delta
+                        return new ElGamal(up_l, up_r);
+                    });
+                    // up: 记录转账中每个用户的(y[i]*r' + g*delta, g*r')
+                    // C:  记录转账中每个用户的(y[i]*r + g*pl, g*r)
+                    
+                    const new_y = y.map(party => ElGamal.base['g'].mul(delta).add(party)); // y[i]' = y[i] + g*delta
+                    // console.log("y[0]: ", bn128.serialize(y[0])); // 忽然明白对于point优雅的打印方式就是bn128.serialize
+                    // console.log("y'[0]: ", bn128.serialize(new_y[0]));
+
+
                     const proof = Service.proveTransfer(Cn, C, y, state.lastRollOver, account.keypair['x'], r, value, state.available - value - fee, index, fee);
                     const u = utils.u(state.lastRollOver, account.keypair['x']); // 大概意思是生成 私钥 + epoch的加密标识: u = G_{epoch}*x
                     // 这样每个epoch每个私钥x都只能有一个u (nonce), 所以在过期的交易记录没法在新epoch通过, 避免重放攻击
@@ -331,13 +368,13 @@ class Client {
                     const beneficiaryKey = beneficiary === undefined ? bn128.zero : friends[beneficiary];
 
                     // C.map((ciphertext) => console.log("ciphertext.left(): ", ciphertext.left()));
-                    C.map((ciphertext) => console.log("ciphertext.left().x: ", ciphertext.left().x.toString(16)));
-                    C.map((ciphertext) => console.log("ciphertext.left().y: ", ciphertext.left().y.toString(16)));
-                    C.map((ciphertext) => console.log("ciphertext.left().x.fromRed(): ", ciphertext.left().x.fromRed().toString(16)));
-                    C.map((ciphertext) => console.log("ciphertext.left().y.fromRed(): ", ciphertext.left().y.fromRed().toString(16)));
-                    C.map((ciphertext) => console.log("ciphertext.left().getX(): ", ciphertext.left().getX().toString(16))); // 返回的是this.x.fromRed()
-                    C.map((ciphertext) => console.log("ciphertext.left().getY(): ", ciphertext.left().getY().toString(16)));
-                    C.map((ciphertext) => console.log("serilized ciphertext.left(): ", bn128.serialize(ciphertext.left())));
+                    // C.map((ciphertext) => console.log("ciphertext.left().x: ", ciphertext.left().x.toString(16)));
+                    // C.map((ciphertext) => console.log("ciphertext.left().y: ", ciphertext.left().y.toString(16)));
+                    // C.map((ciphertext) => console.log("ciphertext.left().x.fromRed(): ", ciphertext.left().x.fromRed().toString(16)));
+                    // C.map((ciphertext) => console.log("ciphertext.left().y.fromRed(): ", ciphertext.left().y.fromRed().toString(16)));
+                    // C.map((ciphertext) => console.log("ciphertext.left().getX(): ", ciphertext.left().getX().toString(16))); // 返回的是this.x.fromRed()
+                    // C.map((ciphertext) => console.log("ciphertext.left().getY(): ", ciphertext.left().getY().toString(16)));
+                    // C.map((ciphertext) => console.log("serilized ciphertext.left(): ", bn128.serialize(ciphertext.left())));
 
                     const encoded = zsc.methods.transfer(
                         // 把一堆东西序列化然后丢给zsc.methods.transfer
