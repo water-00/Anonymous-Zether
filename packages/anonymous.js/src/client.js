@@ -54,7 +54,7 @@ class Client {
                 // console.log("Raw event data:", event);
                 // console.log("Decoded parties:", event.returnValues['parties']);
                 // console.log("Beneficiary point:", event.returnValues['beneficiary']);
-                console.log("Get in `zsc.events.TransferOccurred`"); // 不同的Transfer监听到TransferOccurred的次数不同, 还不知道监听到的次数和什么有关
+                // console.log("Get in `zsc.events.TransferOccurred`"); // 不同的Transfer监听到TransferOccurred的次数不同, 还不知道监听到的次数和什么有关
                 if (transfers.has(event.transactionHash)) { // transfer集合表示由当前客户端发起的交易, 因此在transfer集合的交易不处理? 可能是交给对方客户端处理
                     transfers.delete(event.transactionHash);
                     return;
@@ -82,6 +82,10 @@ class Client {
                                 // console.log("parameters['D'].x: ", parameters['D'].x);
                                 // console.log("parameters['D'].y: ", parameters['D'].y);
 
+                                // console.log("parameters: ", parameters);
+                                // console.log("parameters.up_right: ", parameters['params']['up_right']);
+                                // console.log("parameters.up_left: ", parameters['params']['up_left'][i]);
+
 
                                 const value = utils.readBalance(parameters['C'][i], parameters['D'], account.keypair['x']);
                                 // C[i] = y[i]*r + g*pl 当前帐户在混淆地址列表中的加密余额 (椭圆曲线点)
@@ -89,10 +93,22 @@ class Client {
                                 // x: 账户私钥 (大整数)
                                 // 大概就是用知道当前帐户余额, 解密得到转账金额, 得到更新后的账户余额
 
+                                const delta = utils.readBalance(parameters['params']['up_left'][i], parameters['params']['up_right'], account.keypair['x']);
                                 if (value > 0) {
                                     account._state.pending += value;
                                     // 可以看到这一行在转账后的接收方的console中有输出, 这也映证了监听事件函数是作为"接收方"监听, 对于自己是"发送方"的交易通过transfers集合跳过监听.
                                     console.log("Transfer of " + value + " received! Balance now " + (account._state.available + account._state.pending) + ".");
+                                }
+                                
+                                if (delta > 0) {
+                                    console.log("Successfully received delta = " + delta + "!")
+                                    console.log("sk before update in Red: ", account.keypair['x']);
+                                    console.log("sk before update: ", account.keypair['x'].fromRed());
+                                    console.log("pk before update: ", bn128.serialize(account.keypair['y']));
+                                    account.keypair['x'] = account.keypair['x'].fromRed().add(new BN(delta)).toRed(bn128.q);
+                                    account.keypair['y'] = bn128.curve.g.mul(delta).add(account.keypair['y']);
+                                    console.log("sk after update: ", account.keypair['x']);
+                                    console.log("pk after update: ", bn128.serialize(account.keypair['y']));
                                 }
                             });
                         });
@@ -258,6 +274,12 @@ class Client {
                 throw "Anonset's size (including you and the recipient) must be a power of two. Add " + (next - size) + " or remove " + (size - previous) + ".";
             }
 
+            // 如果在上一轮转账结束时改变了接收者的密钥, 那这里friends装的还是旧公钥...
+            // 在上一轮转账结束时要更新friends中除了发送者的公钥也可以, 把account加个name字段, 然后在监听器中更新friends[account.name]的公钥
+            // 那新一轮转账开始, 上一轮的接收者, 混淆者拿的都是新公钥, 组成了这轮的y
+            // 导致的问题是zsc.methods.simulateAccounts(y.map(bn128.serialize), getEpoch())根本查不到信息
+            // 链上不可能进行椭圆曲线运算, 不可能更新新公钥啊...不对好像调用zsc.transfer时会发new_y
+            // 对哦, 链上用new_y更新pending之类的key就行了 (更新字典的key? 真的假的, 可能就是删除pending[yHash]新建pending[new_yHash]), 链下就更新friends中的公钥
             const friends = this.friends.show(); // 得到的是一个字典, name->bn128.deserialize(pubkey)
             if (!(name in friends))
                 throw "Name \"" + name + "\" hasn't been friended yet!";
@@ -314,7 +336,7 @@ class Client {
                     
                     
                     const r = bn128.randomScalar(); // 随机数, 一种可能的作用是当adjustment相同时, 也有r*y[i]使得每个地址的C[i]很不同, 避免泄露转账金额信息
-                    const D = bn128.curve.g.mul(r); // 随机数信息
+                    const D = bn128.curve.g.mul(r); // D = g*r
                     const C = y.map((party, i) => { // 所有用户的余额变化信息(C[i], D)
                         const adjustment = new BN(i === index[0] ? -value - fee : i === index[1] ? value : 0);
                         // console.log("adjustment: ", adjustment) // new BN(num)就可以将num映射到椭圆曲线群中, 使用toString就能还原数字
@@ -332,7 +354,11 @@ class Client {
                         
                         return new ElGamal(left, D);
                     });
-                    const Cn = deserialized.map((account, i) => account.add(C[i])); // 所有用户更新后的加密余额Cn = (nC[i], nD[i]) = (C[i], D) + (oC[i], oD[i])
+                    // 所有用户更新后的加密余额Cn: ElGamal[] = C: ElGamal[] + deserialized: ElGamal[]
+                    //  (nC[i], nD[i]) = (C[i], D) + (oC[i], oD[i])
+                    //                 = (y[i]*r + g*pl, g*r) + (y[i]*x + g*b[i], g*x)
+                    //                 = (y[i]*(r+x) + g*(pl+b[i]), g*(r+x))
+                    const Cn = deserialized.map((account, i) => account.add(C[i])); 
                     
                     // console.log("C: ", C);
                     // console.log("D: ", D);
@@ -340,18 +366,19 @@ class Client {
 
                     // FUL Zether新增变量 E: point[], up: ElGamal[], new_y: point[], 丢进ZKP和zsc.transfer. E要丢给Solidity后端更新该轮结束后的(nC[i], nD[i])
                     const new_r = bn128.randomScalar(); // 加密delta
-                    const delta = crypto.randomBytes(1).readUInt8(); // 用于更新receiver密钥, 现在生成[0, 255]的随机数而不是[0, q]
+                    // const delta = crypto.randomBytes(1).readUInt8(); // 用于更新receiver密钥, 现在生成[0, 255]的随机数而不是[0, q]
+                    const delta = 88;
                     const up_r = bn128.curve.g.mul(new_r); // g*r'
 
-                    const E = Cn.map(Cn_i => Cn_i.left().mul(delta));  // point type
+                    const E = Cn.map(Cn_i => Cn_i.right().mul(delta));  // E = nD[i] * delta = g * (r+x) * delta
                     // console.log("E: ", E);
 
                     const up = y.map((party, i) => {
-                        // 或许只有接收者要更新私钥, 混淆账户不用? 
+                        // 或许只有接收者要更新私钥, 混淆账户不用? 如果不用就像adjustment那样加个if
                         const up_l = ElGamal.base['g'].mul(delta).add(party.mul(new_r)); // up.l = y[i]*r' + g*delta
                         return new ElGamal(up_l, up_r);
                     });
-                    // up: 记录转账中每个用户的(y[i]*r' + g*delta, g*r')
+                    // up: 记录转账中每个用户的(y[i]*r'+ g*delta, g*r')
                     // C:  记录转账中每个用户的(y[i]*r + g*pl, g*r)
                     
                     const new_y = y.map(party => ElGamal.base['g'].mul(delta).add(party)); // y[i]' = y[i] + g*delta
@@ -370,9 +397,7 @@ class Client {
                     // C.map((ciphertext) => console.log("ciphertext.left(): ", ciphertext.left()));
                     // C.map((ciphertext) => console.log("ciphertext.left().x: ", ciphertext.left().x.toString(16)));
                     // C.map((ciphertext) => console.log("ciphertext.left().y: ", ciphertext.left().y.toString(16)));
-                    // C.map((ciphertext) => console.log("ciphertext.left().x.fromRed(): ", ciphertext.left().x.fromRed().toString(16)));
-                    // C.map((ciphertext) => console.log("ciphertext.left().y.fromRed(): ", ciphertext.left().y.fromRed().toString(16)));
-                    // C.map((ciphertext) => console.log("ciphertext.left().getX(): ", ciphertext.left().getX().toString(16))); // 返回的是this.x.fromRed()
+                    // C.map((ciphertext) => console.log("ciphertext.left().getX(): ", ciphertext.left().getX().toString(16))); // getX()返回的是this.x.fromRed()
                     // C.map((ciphertext) => console.log("ciphertext.left().getY(): ", ciphertext.left().getY().toString(16)));
                     // C.map((ciphertext) => console.log("serilized ciphertext.left(): ", bn128.serialize(ciphertext.left())));
 
@@ -380,7 +405,13 @@ class Client {
                         // 把一堆东西序列化然后丢给zsc.methods.transfer
                         C.map((ciphertext) => bn128.serialize(ciphertext.left())), 
                         bn128.serialize(D), 
-                        y.map(bn128.serialize), 
+                        [ // TransferParams 结构体参数 (up_left, up_right, E)
+                            up.map((uplefttext) => bn128.serialize(uplefttext.left())), // up_left 数组
+                            bn128.serialize(up_r), // up_right
+                            E.map(bn128.serialize) // E 数组
+                        ],
+                        y.map(bn128.serialize),
+                        new_y.map(bn128.serialize), // new
                         bn128.serialize(u), 
                         proof.serialize(), 
                         bn128.serialize(beneficiaryKey)

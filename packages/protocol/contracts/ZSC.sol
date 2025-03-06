@@ -21,10 +21,17 @@ contract ZSC {
     uint256 constant MAX = 4294967295; // 2^32 - 1 // no sload for constants...!
     mapping(bytes32 => Utils.G1Point[2]) acc; // main account mapping
     mapping(bytes32 => Utils.G1Point[2]) pending; // storage for pending transfers
+    // mapping(bytes32 => Utils.G1Point) E; // 更新pk
     mapping(bytes32 => uint256) lastRollOver;
     bytes32[] nonceSet; // would be more natural to use a mapping, but they can't be deleted / reset!
     uint256 lastGlobalUpdate = 0; // will be also used as a proxy for "current epoch", seeing as rollovers will be anticipated
     // not implementing account locking for now...revisit
+
+    struct TransferParams {
+        Utils.G1Point[] up_left;
+        Utils.G1Point up_right;
+        Utils.G1Point[] E;
+    }
 
     event TransferOccurred(Utils.G1Point[] parties, Utils.G1Point beneficiary);
     // arg is still necessary for transfers---not even so much to know when you received a transfer, as to know when you got rolled over.
@@ -115,7 +122,16 @@ contract ZSC {
         require(coin.balanceOf(address(this)) <= MAX, "Fund pushes contract past maximum value.");
     }
 
-    function transfer(Utils.G1Point[] memory C, Utils.G1Point memory D, Utils.G1Point[] memory y, Utils.G1Point memory u, bytes memory proof, Utils.G1Point memory beneficiary) public {
+    function transfer(
+        Utils.G1Point[] memory C, 
+        Utils.G1Point memory D, 
+        TransferParams memory params,  // 合并 up_left, up_right, E
+        Utils.G1Point[] memory y, 
+        Utils.G1Point[] memory new_y, 
+        Utils.G1Point memory u, 
+        bytes memory proof, 
+        Utils.G1Point memory beneficiary
+    ) public {
         // C: 匿名集中每个账户的余额变化 (ElGamal密文左分量)
         // D: 公共随机点, D = r·G, 用来加密调整 (ElGamal密文右分量) ? 没懂D到底是干嘛的
         // y: 匿名集公钥
@@ -123,14 +139,19 @@ contract ZSC {
         // proof: 为了让交易通过而零知识证明 (金额守恒, 私钥有效性)
         // beneficiary: 手续费接收方公钥
         uint256 size = y.length;
+        uint256 size_new_y = new_y.length;
         Utils.G1Point[] memory CLn = new Utils.G1Point[](size);
         Utils.G1Point[] memory CRn = new Utils.G1Point[](size);
-        require(C.length == size, "Input array length mismatch!");
+        require(C.length == size, "Input array `C` length mismatch!");
+        require(size == size_new_y, "y and y' length mismatch!");
+        require(params.up_left.length == size, "Input array `up` length mismatch!");
+        require(params.up_right.x != 0 && params.up_right.y != 0, "`up_right` is invalid!");
+        require(params.E.length == size, "Input array `E` length mismatch!");
 
-        bytes32 beneficiaryHash = keccak256(abi.encode(beneficiary)); // 手续费接收方钱包地址
-        require(registered(beneficiaryHash), "Miner's account is not yet registered."); // necessary so that receiving a fee can't "backdoor" you into registration.
-        rollOver(beneficiaryHash); // 把手续费地址在前一个epoch的pending余额合并的acc
-        pending[beneficiaryHash][0] = pending[beneficiaryHash][0].add(Utils.g().mul(fee));
+        // bytes32 beneficiaryHash = keccak256(abi.encode(beneficiary)); // 手续费接收方钱包地址
+        // require(registered(beneficiaryHash), "Miner's account is not yet registered."); // necessary so that receiving a fee can't "backdoor" you into registration.
+        // rollOver(beneficiaryHash); // 把手续费地址在前一个epoch的pending余额合并的acc
+        // pending[beneficiaryHash][0] = pending[beneficiaryHash][0].add(Utils.g().mul(fee));
 
         for (uint256 i = 0; i < size; i++) {
             bytes32 yHash = keccak256(abi.encode(y[i]));
@@ -156,7 +177,18 @@ contract ZSC {
         }
         nonceSet.push(uHash);
 
-        require(zetherVerifier.verifyTransfer(CLn, CRn, C, D, y, lastGlobalUpdate, u, proof), "Transfer proof verification failed!");
+        // 因为原来transfer + verifyTransfer的参数数量超过了EVM的栈深度限制16
+        // 所以要构造结构体参数 statement, 感觉耗时多了好久
+        ZetherVerifier.ZetherStatement memory statement;
+        statement.CLn = CLn;
+        statement.CRn = CRn;
+        statement.C = C;
+        statement.D = D;
+        statement.y = y;
+        statement.epoch = lastGlobalUpdate;
+        statement.u = u;
+
+        require(zetherVerifier.verifyTransfer(statement, proof), "Transfer proof verification failed!");
 
         emit TransferOccurred(y, beneficiary); // 发射一个事件
         // require(false, "DEBUG: TransferOccurred emitted"); // 强制回滚，观察日志

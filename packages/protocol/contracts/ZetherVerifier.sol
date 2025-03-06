@@ -61,15 +61,7 @@ contract ZetherVerifier {
         ip = InnerProductVerifier(_ip);
     }
 
-    function verifyTransfer(Utils.G1Point[] memory CLn, Utils.G1Point[] memory CRn, Utils.G1Point[] memory C, Utils.G1Point memory D, Utils.G1Point[] memory y, uint256 epoch, Utils.G1Point memory u, bytes memory proof) public view returns (bool) {
-        ZetherStatement memory statement;
-        statement.CLn = CLn; // do i need to allocate / set size?!
-        statement.CRn = CRn;
-        statement.C = C;
-        statement.D = D;
-        statement.y = y;
-        statement.epoch = epoch;
-        statement.u = u;
+    function verifyTransfer(ZetherStatement memory statement, bytes memory proof) public view returns (bool) {
         ZetherProof memory zetherProof = unserialize(proof);
         return verify(statement, zetherProof);
     }

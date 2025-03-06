@@ -84,18 +84,18 @@ contract("ZSC", async (accounts) => {
         console.log("Gas Used: ", receipt.gasUsed);
     });
 
-    // it("should allow transferring (2 decoys and NO miner)", async () => {
-    //     const zsc = await ZSC.deployed();
-    //     const receipt = await alice.transfer("Bob", 10, ["Carol", "Dave"]);
-    //     await new Promise((resolve) => setTimeout(resolve, 100));
-    //     assert.equal(
-    //         bob.account.balance(),
-    //         20,
-    //         "Transfer failed"
-    //     );
+    it("should allow transferring (2 decoys and NO miner)", async () => {
+        const zsc = await ZSC.deployed();
+        const receipt = await alice.transfer("Bob", 10, ["Carol", "Dave"]);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.equal(
+            bob.account.balance(),
+            20,
+            "Transfer failed"
+        );
 
-    //     console.log("Gas Used: ", receipt.gasUsed);
-    // });
+        console.log("Gas Used: ", receipt.gasUsed);
+    });
 
     // it("should allow transferring (6 decoys and miner)", async () => {
     //     const zsc = await ZSC.deployed();
