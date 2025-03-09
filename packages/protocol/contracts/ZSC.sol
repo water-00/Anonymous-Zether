@@ -21,6 +21,8 @@ contract ZSC {
     uint256 constant MAX = 4294967295; // 2^32 - 1 // no sload for constants...!
     mapping(bytes32 => Utils.G1Point[2]) acc; // main account mapping
     mapping(bytes32 => Utils.G1Point[2]) pending; // storage for pending transfers
+    // acc[yHash], pending[yHash]结构: (pk*x + g*balance, g*x)
+    
     // mapping(bytes32 => Utils.G1Point) E; // 更新pk
     mapping(bytes32 => uint256) lastRollOver;
     bytes32[] nonceSet; // would be more natural to use a mapping, but they can't be deleted / reset!
@@ -78,10 +80,11 @@ contract ZSC {
             // [[acc[yHash][0], acc[yHash][1]], 对应主账户CLn, CRn
             // [pending[yHash][0], pending[yHash][1]]] 对应调整分量deltaC, deltaD
             // 忽然好奇Solidity支持x = x + y这种表达式吗, 是不是为了避免这种表达式引入scratch
+            // acc = acc + pending
             acc[yHash][0] = scratch[0][0].add(scratch[1][0]); // CLn' = CLn + deltaC
             acc[yHash][1] = scratch[0][1].add(scratch[1][1]); // CRn' = CRn + deltaD
             // acc[yHash] = scratch[0]; // can't do this---have to do the above instead (and spend 2 sloads / stores)---because "not supported". revisit
-            delete pending[yHash]; // pending[yHash] = [Utils.G1Point(0, 0), Utils.G1Point(0, 0)]; pending[yHash]更新完毕, 清空
+            delete pending[yHash]; // pending[yHash]更新完毕, 清空
             lastRollOver[yHash] = e;
         }
         if (lastGlobalUpdate < e) {
@@ -139,11 +142,10 @@ contract ZSC {
         // proof: 为了让交易通过而零知识证明 (金额守恒, 私钥有效性)
         // beneficiary: 手续费接收方公钥
         uint256 size = y.length;
-        uint256 size_new_y = new_y.length;
         Utils.G1Point[] memory CLn = new Utils.G1Point[](size);
         Utils.G1Point[] memory CRn = new Utils.G1Point[](size);
         require(C.length == size, "Input array `C` length mismatch!");
-        require(size == size_new_y, "y and y' length mismatch!");
+        require(size == new_y.length, "y and y' length mismatch!");
         require(params.up_left.length == size, "Input array `up` length mismatch!");
         require(params.up_right.x != 0 && params.up_right.y != 0, "`up_right` is invalid!");
         require(params.E.length == size, "Input array `E` length mismatch!");
@@ -156,6 +158,7 @@ contract ZSC {
 
         for (uint256 i = 0; i < size; i++) {
             bytes32 yHash = keccak256(abi.encode(y[i]));
+            bytes32 new_yHash = keccak256(abi.encode(new_y[i]));
             require(registered(yHash), "Account not yet registered.");
             rollOver(yHash);
             Utils.G1Point[2] memory scratch = pending[yHash];
@@ -182,6 +185,10 @@ contract ZSC {
             scratch = acc[yHash]; // trying to save an sload, i guess.
             CLn[i] = scratch[0].add(C[i]);
             CRn[i] = scratch[1].add(D);
+
+            // acc[new_yHash][0] = new_y[i];
+            // acc[new_yHash][1] = Utils.g();
+            // delete acc[yHash];
         }
 
         // 防重放攻击 (同一交易被重复提交)
