@@ -366,8 +366,8 @@ class Client {
 
                     // FUL Zether新增变量 E: point[], up: ElGamal[], new_y: point[], 丢进ZKP和zsc.transfer. E要丢给Solidity后端更新该轮结束后的(nC[i], nD[i])
                     const new_r = bn128.randomScalar(); // 加密delta
-                    // const delta = crypto.randomBytes(1).readUInt8(); // 用于更新receiver密钥, 现在生成[0, 255]的随机数而不是[0, q]
-                    const delta = 88;
+                    const delta = crypto.randomBytes(1).readUInt8(); // 用于更新receiver密钥, 现在生成[0, 255]的随机数而不是[0, q]
+                    // const delta = 88;
                     const up_r = bn128.curve.g.mul(new_r); // g*r'
 
                     const E = Cn.map(Cn_i => Cn_i.right().mul(delta));  // E = nD[i] * delta = g * (r+x) * delta
@@ -477,9 +477,11 @@ class Client {
             return new Promise((resolve, reject) => {
                 zsc.methods.simulateAccounts([bn128.serialize(account.keypair['y'])], getEpoch()).call()
                     .then((result) => {
-                        // result = [CLn, CRn]
+                        // result = [[CLn, CRn], ] 序列化格式
+                        // console.log("result: ", result);
                         const deserialized = ElGamal.deserialize(result[0]);
                         const C = deserialized.plus(new BN(-value)); // C = CLn - value
+                        console.log("state.available - value: ", state.available - value);
                         const proof = Service.proveBurn(C, account.keypair['y'], state.lastRollOver, home, account.keypair['x'], state.available - value);
                         const u = utils.u(state.lastRollOver, account.keypair['x']);
                         zsc.methods.burn(bn128.serialize(account.keypair['y']), value, bn128.serialize(u), proof.serialize()).send({ 'from': home, 'gas': 6721975 })

@@ -148,6 +148,7 @@ contract ZSC {
         require(params.up_right.x != 0 && params.up_right.y != 0, "`up_right` is invalid!");
         require(params.E.length == size, "Input array `E` length mismatch!");
 
+        // Stack too deep 所以先把手续费地址的更新注释掉了
         // bytes32 beneficiaryHash = keccak256(abi.encode(beneficiary)); // 手续费接收方钱包地址
         // require(registered(beneficiaryHash), "Miner's account is not yet registered."); // necessary so that receiving a fee can't "backdoor" you into registration.
         // rollOver(beneficiaryHash); // 把手续费地址在前一个epoch的pending余额合并的acc
@@ -159,12 +160,25 @@ contract ZSC {
             rollOver(yHash);
             Utils.G1Point[2] memory scratch = pending[yHash];
 
-            // 更新pending余额的左分量C[i]和右分量D
+            
+            // acc[yHash], pending[yHash]结构: (pk*x + g*balance, g*x)
+            // (c[i], D)结构: (pk*r + g*pl, g*r)
+            // 相加得到: (pk*(x+r) + g*(balance+gl), g*(x+r))
+            // new_pk = pk + g*delta, 把new_pk替换掉上式的pk得到new_pending
+            // new_pending = ((pk+g*delta) * (x+r) + g*(balance+gl), g*r)
+            //             = (pk*(x+r) + g*(balance+gl) + g*delta*(x+r), g*r)
+            //             = (pending[0] + E, pending[1])
+            // 这个pending不是模拟更新后的结果, 而是真的把这笔转账加到acc的pending上了. (但是这不应该在ZKP通过之后做吗?)
             pending[yHash][0] = scratch[0].add(C[i]);
             pending[yHash][1] = scratch[1].add(D);
             // pending[yHash] = scratch; // can't do this, so have to use 2 sstores _anyway_ (as in above)
 
-            // CLn[i]和CRn[i]是更新后的加密余额, 用于零知识证明验证
+            // new_pending[i] = (pending[i].left + E[i], pending[i].right)
+            pending[new_yHash][0] = pending[yHash][0].add(params.E[i]);
+            pending[new_yHash][1] = pending[yHash][1];
+            // delete pending[yHash];
+
+            // CLn[i]和CRn[i]是模拟更新后的加密余额, 用于零知识证明验证
             scratch = acc[yHash]; // trying to save an sload, i guess.
             CLn[i] = scratch[0].add(C[i]);
             CRn[i] = scratch[1].add(D);
@@ -197,6 +211,7 @@ contract ZSC {
     function burn(Utils.G1Point memory y, uint256 bTransfer, Utils.G1Point memory u, bytes memory proof) public {
         // bTransfer = 要烧毁的value
         bytes32 yHash = keccak256(abi.encode(y));
+        // require(false, "Test here");
         require(registered(yHash), "Account not yet registered.");
         rollOver(yHash);
 
