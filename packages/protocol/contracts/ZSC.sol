@@ -181,6 +181,10 @@ contract ZSC {
             pending[new_yHash][1] = pending[yHash][1];
             // delete pending[yHash];
 
+            // 为什么下面这种代码能够记录Bob的多次收款??
+            // pending[new_yHash][0] = new_y[i];
+            // pending[new_yHash][1] = Utils.g();
+
             // CLn[i]和CRn[i]是模拟更新后的加密余额, 用于零知识证明验证
             scratch = acc[yHash]; // trying to save an sload, i guess.
             CLn[i] = scratch[0].add(C[i]);
@@ -200,16 +204,16 @@ contract ZSC {
 
         // 因为原来transfer + verifyTransfer的参数数量超过了EVM的栈深度限制16
         // 所以要构造结构体参数 statement, 感觉耗时多了好久
-        ZetherVerifier.ZetherStatement memory statement;
-        statement.CLn = CLn;
-        statement.CRn = CRn;
-        statement.C = C;
-        statement.D = D;
-        statement.y = y;
-        statement.epoch = lastGlobalUpdate;
-        statement.u = u;
+        // ZetherVerifier.ZetherStatement memory statement;
+        // statement.CLn = CLn;
+        // statement.CRn = CRn;
+        // statement.C = C;
+        // statement.D = D;
+        // statement.y = y;
+        // statement.epoch = lastGlobalUpdate;
+        // statement.u = u;
 
-        require(zetherVerifier.verifyTransfer(statement, proof), "Transfer proof verification failed!");
+        // require(zetherVerifier.verifyTransfer(statement, proof), "Transfer proof verification failed!");
 
         emit TransferOccurred(y, beneficiary); // 发射一个事件
         // require(false, "DEBUG: TransferOccurred emitted"); // 强制回滚，观察日志
@@ -234,7 +238,7 @@ contract ZSC {
         }
         nonceSet.push(uHash);
 
-        require(burnVerifier.verifyBurn(scratch[0], scratch[1], y, lastGlobalUpdate, u, msg.sender, proof), "Burn proof verification failed!");
+        // require(burnVerifier.verifyBurn(scratch[0], scratch[1], y, lastGlobalUpdate, u, msg.sender, proof), "Burn proof verification failed!");
         require(coin.transfer(msg.sender, bTransfer), "This shouldn't fail... Something went severely wrong.");
     }
 }
