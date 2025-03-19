@@ -8,7 +8,7 @@ const utils = {};
 utils.sign = (address, keypair) => {
     const k = bn128.randomScalar(); // 随机临时私钥
     const K = bn128.curve.g.mul(k); // 临时公钥K = k·G
-    const c = utils.hash(ABICoder.encodeParameters([ // 得到哈希值challenge, 并且是红黑树编码下的. c = H(addr, Y, K) mod q
+    const c = utils.hash(ABICoder.encodeParameters([ // 得到哈希值challenge,  c = H(addr, Y, K) mod q
         'address',
         'bytes32[2]',
         'bytes32[2]',
@@ -18,7 +18,7 @@ utils.sign = (address, keypair) => {
         bn128.serialize(K),
     ]));
 
-    const s = c.redMul(keypair['x']).redAdd(k); // response s = c·x + k. 红黑树格式下的运算提高效率
+    const s = c.redMul(keypair['x']).redAdd(k); // response s = c·x + k.
     return [bn128.bytes(c), bn128.bytes(s)];
 }
 
@@ -63,6 +63,7 @@ utils.readBalance = (CL, CR, x) => {
 utils.mapInto = (seed) => { // seed is flattened 0x + hex string
     const seed_red = new BN(seed.slice(2), 16).toRed(bn128.p); // seed-> 模bn128.p的大整数
     const p_1_4 = bn128.curve.p.add(new BN(1)).div(new BN(4)); // 有限域上的(p+1)/4
+    // console.log("p: ", bn128.curve.p);
 
     // 目标: 给定seed (x), 找到y满足椭圆曲线 y^2 \equiv x^3 + 3 \mod p, 返回(x, y)
     while (true) {

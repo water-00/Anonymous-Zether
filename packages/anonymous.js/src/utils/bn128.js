@@ -3,7 +3,7 @@ const EC = require('elliptic')
 const crypto = require('crypto')
 
 // 域模数, 定义有限域范围, 要求所有椭圆曲线的点(x, y)满足x, y < FIELD_MODULUS
-const FIELD_MODULUS = new BN("30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47", 16); 
+const FIELD_MODULUS = new BN("30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47", 16);
 // 群模数, 椭圆曲线bn128的循环子群的阶, 即基点G的阶
 const GROUP_MODULUS = new BN("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001", 16);
 const B_MAX = 4294967295; // balance的最大值, 2^32 - 1
