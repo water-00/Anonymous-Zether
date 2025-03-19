@@ -93,7 +93,8 @@ class Client {
                                 // x: 账户私钥 (大整数)
                                 // 大概就是用知道当前帐户余额, 解密得到转账金额, 得到更新后的账户余额
 
-                                const delta = utils.readBalance(parameters['params']['up_left'][i], parameters['params']['up_right'], account.keypair['x']);
+                                const delta = utils.readDelta(parameters['params']['up_left'][i], parameters['params']['up_right'], account.keypair['x']);
+                                // const delta = utils.readBalance(parameters['params']['up_left'][i], parameters['params']['up_right'], account.keypair['x']);
                                 if (value > 0) {
                                     account._state.pending += value;
                                     // 可以看到这一行在转账后的接收方的console中有输出, 这也映证了监听事件函数是作为"接收方"监听, 对于自己是"发送方"的交易通过transfers集合跳过监听.
@@ -367,8 +368,15 @@ class Client {
 
                     // FUL Zether新增变量 E: point[], up: ElGamal[], new_y: point[], 丢进ZKP和zsc.transfer. E要丢给Solidity后端更新该轮结束后的(nC[i], nD[i])
                     const new_r = bn128.randomScalar(); // 加密delta
-                    const delta = crypto.randomBytes(1).readUInt8(); // 用于更新receiver密钥, 现在生成[0, 255]的随机数而不是[0, q]
+                    // const delta = crypto.randomBytes(1).readUInt8(); // 用于更新receiver密钥, 现在生成[0, 255]的随机数而不是[0, q]
                     // const delta = 88;
+                    const min = new BN(1).shln(64); // 2^64
+                    const max = new BN(1).shln(240); // 2^240
+                    const range = max.sub(min);
+                    const numBytes = Math.ceil(range.bitLength() / 8);
+                    const delta = new BN(crypto.randomBytes(numBytes)).add(min);
+                    const f_delta = utils.KoblitzMapping(delta);
+                    console.log("random selected delta is: ", delta);
                     const up_r = bn128.curve.g.mul(new_r); // g*r'
 
                     const E = Cn.map(Cn_i => Cn_i.right().mul(delta));  // E = nD[i] * delta = g * (r+x) * delta
@@ -376,7 +384,7 @@ class Client {
 
                     const up = y.map((party, i) => {
                         // 或许只有接收者要更新私钥, 混淆账户不用? 如果不用就像adjustment那样加个if
-                        const up_l = ElGamal.base['g'].mul(delta).add(party.mul(new_r)); // up.l = y[i]*r' + g*delta
+                        const up_l = f_delta.add(party.mul(new_r)); // up.l = f(delta) + y*r'
                         return new ElGamal(up_l, up_r);
                     });
                     // up: 记录转账中每个用户的(y[i]*r'+ g*delta, g*r')

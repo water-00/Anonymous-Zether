@@ -60,6 +60,16 @@ utils.readBalance = (CL, CR, x) => {
     }
 };
 
+utils.readDelta = (CL, CR, x) => {
+    CL = bn128.deserialize(CL);
+    CR = bn128.deserialize(CR);
+    const f_delta = CL.add(CR.mul(x.redNeg())); // f(x) = up_l - up_r*x
+    const delta = f_delta.getX().divn(1000);
+    console.log("X for delta is: ", f_delta.getX());
+
+    return delta;
+}
+
 utils.mapInto = (seed) => { // seed is flattened 0x + hex string
     const seed_red = new BN(seed.slice(2), 16).toRed(bn128.p); // seed-> 模bn128.p的大整数
     const p_1_4 = bn128.curve.p.add(new BN(1)).div(new BN(4)); // 有限域上的(p+1)/4
@@ -75,6 +85,22 @@ utils.mapInto = (seed) => { // seed is flattened 0x + hex string
         seed_red.redIAdd(new BN(1).toRed(bn128.p));
     }
 };
+
+utils.KoblitzMapping = (m) => {
+    // BN上的整数m映射到椭圆曲线点
+    const m_red = m.toRed(bn128.p);
+    const x_red = m_red.redMul(new BN(1000).toRed(bn128.p));
+    const p_1_4 = bn128.curve.p.add(new BN(1)).div(new BN(4));
+    while (true) {
+        const y_squared = x_red.redPow(new BN(3)).redAdd(new BN(3).toRed(bn128.p));
+        const y = y_squared.redPow(p_1_4);
+        if (y.redPow(new BN(2)).eq(y_squared)) {
+            return bn128.curve.point(x_red.fromRed(), y.fromRed()); // 验证y^2 \equiv x^3 + 3 \mod p, 若成立返回(x, y)
+        }
+        x_red.redIAdd(new BN(1).toRed(bn128.p));
+    }
+}
+
 
 utils.gEpoch = (epoch) => {
     // hash("Zether" + epoch) -> 得到曲线点G_{epoch}
