@@ -103,13 +103,12 @@ class Client {
                                 
                                 if (delta > 0) {
                                     console.log("Successfully received delta = " + delta + "!")
-                                    console.log("sk before update in Red: ", account.keypair['x']);
-                                    console.log("sk before update: ", account.keypair['x'].fromRed());
-                                    console.log("pk before update: ", bn128.serialize(account.keypair['y']));
+                                    // console.log("sk before update: ", account.keypair['x'].fromRed());
+                                    // console.log("pk before update: ", bn128.serialize(account.keypair['y']));
                                     account.keypair['x'] = account.keypair['x'].fromRed().add(new BN(delta)).toRed(bn128.q);
                                     account.keypair['y'] = bn128.curve.g.mul(delta).add(account.keypair['y']);
-                                    console.log("sk after update: ", account.keypair['x']);
-                                    console.log("pk after update: ", bn128.serialize(account.keypair['y']));
+                                    // console.log("sk after update: ", account.keypair['x'].fromRed());
+                                    // console.log("pk after update: ", bn128.serialize(account.keypair['y']));
                                 }
                             });
                         });
@@ -239,26 +238,31 @@ class Client {
             });
         };
 
-        this.transfer = (name, value, decoys, beneficiary) => { // todo: make sure the beneficiary is registered.
+        this.transfer = (names, values, beneficiary) => { // todo: make sure the beneficiary is registered.
+            if (!Array.isArray(names) || !Array.isArray(values))
+                throw "Recipients and values must be arrays";
+            if (names.length !== values.length)
+                throw "Recipients and values length mismatch";
+
             if (this.account.keypair === undefined)
                 throw "Client's account is not yet registered!";
-            decoys = decoys ? decoys : []; // 混淆地址
             const account = this.account;
             const state = account._simulate();
-            if (value + fee > state.available + state.pending)
-                throw "Requested transfer amount of " + value + " (plus fee of " + fee + ") exceeds account balance of " + (state.available + state.pending) + ".";
+            const totalValue = values.reduce((acc, v) => acc + v, 0);
+            if (totalValue + fee > state.available + state.pending)
+                throw "Requested transfer amount of " + totalValue + " (plus fee of " + fee + ") exceeds account balance of " + (state.available + state.pending) + ".";
             const wait = away(); // 距离下一个epoch的ms
             const seconds = Math.ceil(wait / 1000);
             const plural = seconds === 1 ? "" : "s";
-            if (value > state.available) { // 前面已经检查过available + pending是够的, 但这里available不够, 说明account有一部分pending余额需要等下一个epoch释放
+            if (totalValue > state.available) { // 前面已经检查过available + pending是够的, 但这里available不够, 说明account有一部分pending余额需要等下一个epoch释放
                 console.log("Your transfer has been queued. Please wait " + seconds + " second" + plural + ", for the release of your funds...");
-                return sleep(wait).then(() => this.transfer(name, value, decoys, beneficiary));
+                return sleep(wait).then(() => this.transfer(names, values, beneficiary));
             }
             if (state.nonceUsed) { // nonce已用, 每个epoch只允许一次转账
                 console.log("Your transfer has been queued. Please wait " + seconds + " second" + plural + ", until the next epoch...");
-                return sleep(wait).then(() => this.transfer(name, value, decoys, beneficiary));
+                return sleep(wait).then(() => this.transfer(names, values, beneficiary));
             }
-            const size = 2 + decoys.length; // 发送方, 接收方 + 混淆地址 == 匿名集
+            const size = 1 + names.length; // 匿名集大小
             const estimated = estimate(size, false); // 根据size估计零知识证明 + 转账上链的时间
             if (estimated > epochLength * 1000) // epochLength有一种"一个epoch占多少秒"的感觉, 应该是在zsc.methods.epochLength()中定义的. 默认的应该是6s, 修改estimate中的固定时间使得estimated大于6000ms就会进入这条if
                 // 如果估计时间甚至大于一个epoch时间, 那就需要修改epoch时间上限
@@ -266,7 +270,7 @@ class Client {
             if (estimated > wait) {
                 // 这里的3100是哪来的, 感觉像是epoch (6000ms) 的一半. 如果距离下一个epoch的时间不到3100ms, 甚至都不能把transfer加入队列, 得等下下个epoch
                 console.log(wait < 3100 ? "Initiating transfer." : "Your transfer has been queued. Please wait " + seconds + " second" + plural + ", until the next epoch...");
-                return sleep(wait).then(() => this.transfer(name, value, decoys, beneficiary));
+                return sleep(wait).then(() => this.transfer(names, values, beneficiary));
             }
             if (size & (size - 1)) { // 匿名集size必须是2的幂, 为了零知识证明的效率
                 let previous = 1;
@@ -283,43 +287,46 @@ class Client {
             // 2. 在zsc.methods.transfer返回receipt后, 更新发送者的`friends`中的pk
             // 3. 在zsc.events.TransferOccurred({})监听到事件后, 监听者更新自己account的sk, pk
             const friends = this.friends.show(); // 得到的是一个字典, name->bn128.deserialize(pubkey)
-            if (!(name in friends))
-                throw "Name \"" + name + "\" hasn't been friended yet!";
-            if (account.keypair['y'].eq(friends[name]))
-                throw "Sending to yourself is currently unsupported (and useless!)."
-            const y = [account.keypair['y'], friends[name]]; // not yet shuffled 现在就两个人
-            decoys.forEach((decoy) => {
-                if (!(decoy in friends))
-                    throw "Decoy \"" + decoy + "\" is unknown in friends directory!";
-                y.push(friends[decoy]); // 发送方地址, 接收方地址, 混淆地址组成的keypair['y'] (就是地址反序列化后得到的椭圆曲线坐标) 列表
+            const y = [account.keypair['y']]; // 匿名集
+            const recipients = []; // 接收方集合, maybe洗牌算法中有用?
+            names.forEach((name) => {
+                if (account.keypair['y'].eq(friends[name]))
+                    throw "Sending to yourself is currently unsupported (and useless!)."
+                if (!(name in friends))
+                    throw "Name \"" + name + "\" is unknown in friends directory!";
+                y.push(friends[name]); // 发送方地址, 接收方地址, 混淆地址组成的keypair['y'] (就是地址反序列化后得到的椭圆曲线坐标) 列表
+                recipients.push(friends[name]);
             });
             if (beneficiary !== undefined && !(beneficiary in friends)) // ZSC合约手续费地址
                 throw "Beneficiary \"" + beneficiary + "\" is not known!";
-            const index = [];
-            let m = y.length;
-            while (m !== 0) { // https://bost.ocks.org/mike/shuffle/
-                // Fisher-Yates 洗牌算法: 从后往前遍历, 每次把最后一个元素y[m]与y[0, m-1]之间一个随机元素交换, 然后m--
-                // randomBytes(1).readUInt8(): 从[0, 255]生成一个随机数, 然后mod m, 因此当m不是256的约数时采样结果并不是均匀分布的
-                // 比如m = 127, 255 % 127 = 1, 所以0和1会比[2, 127]多一个能采样到它的数字 (0--0, 127, 254; 1--1, 128, 255, 剩下的数字都只有2种可能), 这就是modulo bias
-                const i = crypto.randomBytes(1).readUInt8() % m--; // warning: N should be <= 256. also modulo bias.
-                // AI建议: 采用Rejection Sampling消除modulo bias
 
-                // 交换y[i], y[m]
-                const temp = y[i];
-                y[i] = y[m];
-                y[m] = temp;
+            // 一整个洗牌算法在多个receiver的情况下我就先只能注释掉了
+            // const index = [];
+            // let m = y.length;
+            // while (m !== 0) { // https://bost.ocks.org/mike/shuffle/
+            //     // Fisher-Yates 洗牌算法: 从后往前遍历, 每次把最后一个元素y[m]与y[0, m-1]之间一个随机元素交换, 然后m--
+            //     // randomBytes(1).readUInt8(): 
+            //     const i = crypto.randomBytes(1).readUInt8() % m--; // 从[0, 255]生成一个随机数, 然后mod m, 因此当m不是256的约数时采样结果并不是均匀分布的
+            //     // 比如m = 127, [0, 255] mod m结果为0, 1的概率为3/255, 2-126的概率为2/255, 这就是modulo bias
+            //     // AI建议: 采用Rejection Sampling消除modulo bias
 
-                // 记录发送方, 接收方地址被交换后的位置
-                if (account.keypair['y'].eq(temp)) index[0] = m;
-                else if (friends[name].eq(temp)) index[1] = m;
-            } // shuffle the array of y's
-            if (index[0] % 2 === index[1] % 2) {
-                // 要求发送方和接收方的索引奇偶性不同 (why?), 如果相同的话就把接收方和邻居换一下位置
-                const temp = y[index[1]];
-                y[index[1]] = y[index[1] + (index[1] % 2 === 0 ? 1 : -1)];
-                y[index[1] + (index[1] % 2 === 0 ? 1 : -1)] = temp;
-                index[1] = index[1] + (index[1] % 2 === 0 ? 1 : -1);
-            } // make sure you and your friend have opposite parity
+            //     // 交换y[i], y[m]
+            //     const temp = y[i];
+            //     y[i] = y[m];
+            //     y[m] = temp;
+
+            //     // 记录发送方, 接收方地址被交换后的位置
+            //     if (account.keypair['y'].eq(temp)) index[0] = m;
+            //     else if (friends[name].eq(temp)) index[1] = m;
+            // } // shuffle the array of y's
+            // if (index[0] % 2 === index[1] % 2) {
+            //     // 要求发送方和接收方的索引奇偶性不同 (why?), 如果相同的话就把接收方和邻居换一下位置
+            //     const temp = y[index[1]];
+            //     y[index[1]] = y[index[1] + (index[1] % 2 === 0 ? 1 : -1)];
+            //     y[index[1] + (index[1] % 2 === 0 ? 1 : -1)] = temp;
+            //     index[1] = index[1] + (index[1] % 2 === 0 ? 1 : -1);
+            // } // make sure you and your friend have opposite parity
+
             return new Promise((resolve, reject) => {
                 // y.map: 对y的每个元素 (椭圆曲线点[y.x, y.y]) 调用bn128.serialize得到公钥, simulateAccounts返回所有用户上一轮结束时的账户余额(oC[i], oD[i]) (序列化格式)
                 zsc.methods.simulateAccounts(y.map(bn128.serialize), getEpoch()).call().then((result) => {
@@ -334,13 +341,14 @@ class Client {
                     // })
 
                     if (deserialized.some((account) => account.zero())) // ElGamal.zero(), 公钥或私钥为bn128.zero
-                        return reject(new Error("Please make sure all parties (including decoys) are registered.")); // todo: better error message, i.e., which friend?
+                        return reject(new Error("Please make sure all parties are registered.")); // todo: better error message, i.e., which friend?
                     
                     
                     const r = bn128.randomScalar(); // 随机数, 一种可能的作用是当adjustment相同时, 也有r*y[i]使得每个地址的C[i]很不同, 避免泄露转账金额信息
                     const D = bn128.curve.g.mul(r); // D = g*r
                     const C = y.map((party, i) => { // 所有用户的余额变化信息(C[i], D)
-                        const adjustment = new BN(i === index[0] ? -value - fee : i === index[1] ? value : 0);
+                        // const adjustment = new BN(i === index[0] ? -value - fee : i === index[1] ? value : 0);
+                        const adjustment = new BN(i === 0 ? -totalValue-fee : values[i-1]);
                         // console.log("adjustment: ", adjustment) // new BN(num)就可以将num映射到椭圆曲线群中, 使用toString就能还原数字
                         // console.log("adjustment.toRed(): ", adjustment.toRed().toString()); // Error
                         // console.log("adjustment.fromRed(): ", adjustment.fromRed().toString()) // Error
@@ -383,7 +391,6 @@ class Client {
                     // console.log("E: ", E);
 
                     const up = y.map((party, i) => {
-                        // 或许只有接收者要更新私钥, 混淆账户不用? 如果不用就像adjustment那样加个if
                         const up_l = f_delta.add(party.mul(new_r)); // up.l = f(delta) + y*r'
                         return new ElGamal(up_l, up_r);
                     });
@@ -395,7 +402,9 @@ class Client {
                     // console.log("new_y[0]: ", bn128.serialize(new_y[0]));
 
 
-                    const proof = Service.proveTransfer(Cn, C, y, state.lastRollOver, account.keypair['x'], r, value, state.available - value - fee, index, fee);
+                    // index没了啊, 先随便填一下
+                    const index = [0, 1];
+                    const proof = Service.proveTransfer(Cn, C, y, state.lastRollOver, account.keypair['x'], r, totalValue, state.available - totalValue - fee, index, fee);
                     const u = utils.u(state.lastRollOver, account.keypair['x']); // 大概意思是生成 私钥 + epoch的加密标识: u = G_{epoch}*x
                     // 这样每个epoch每个私钥x都只能有一个u (nonce), 所以在过期的交易记录没法在新epoch通过, 避免重放攻击
                     const throwaway = web3.eth.accounts.create();  // 生成一个临时账户作为链上的msg.sender, 用它的私钥签名这笔交易, 它仅执行这一笔交易就被丢弃
@@ -447,24 +456,21 @@ class Client {
                                 // 2. 交易已被某一区块打包, tx内编码的zsc.methods.transfer方法执行完成
                                 account._state = account._simulate(); // have to freshly call it
                                 account._state.nonceUsed = true;
-                                account._state.pending -= value + fee;
+                                account._state.pending -= totalValue + fee;
 
                                 // console.log(receipt);
-                                console.log("Transfer of " + value + " (with fee of " + fee + ") was successful. Balance now " + (account._state.available + account._state.pending) + ".");
+                                console.log("Transfer of " + totalValue + " (with fee of " + fee + ") was successful. Balance now " + (account._state.available + account._state.pending) + ".");
 
                                 // 更新friends中存的公钥信息
                                 console.log("friends pks before updated:");
-                                console.log(bn128.serialize(friends[name]));
-                                friends[name] = bn128.curve.g.mul(delta).add(friends[name]);
-                                decoys.forEach((decoy) => {
-                                    console.log(bn128.serialize(friends[decoy]));
-                                    friends[decoy] = bn128.curve.g.mul(delta).add(friends[decoy]);
+                                names.forEach((name) => {
+                                    console.log(bn128.serialize(friends[name]));
+                                    friends[name] = bn128.curve.g.mul(delta).add(friends[name]);
                                 });
 
                                 console.log("friends pks after updated:");
-                                console.log(bn128.serialize(friends[name]));
-                                decoys.forEach((decoy) => {
-                                    console.log(bn128.serialize(friends[decoy]));
+                                names.forEach((name) => {
+                                    console.log(bn128.serialize(friends[name]));
                                 });
 
 

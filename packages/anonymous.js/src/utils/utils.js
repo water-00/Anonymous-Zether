@@ -65,7 +65,7 @@ utils.readDelta = (CL, CR, x) => {
     CR = bn128.deserialize(CR);
     const f_delta = CL.add(CR.mul(x.redNeg())); // f(x) = up_l - up_r*x
     const delta = f_delta.getX().divn(1000);
-    console.log("X for delta is: ", f_delta.getX());
+    // console.log("X for delta is: ", f_delta.getX());
 
     return delta;
 }
