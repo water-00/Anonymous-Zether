@@ -3,13 +3,13 @@ const BurnProof = require('../prover/burn.js');
 
 class Service {
     static proveTransfer(Cn, C, y, epoch, sk, r, bTransfer, bDiff, index, fee) {
-        const statement = {};
+        const statement = {}; // 转账发起者的陈述dict
         statement['Cn'] = Cn;
         statement['C'] = C;
         statement['y'] = y;
         statement['epoch'] = epoch;
 
-        const witness = {};
+        const witness = {}; // 服务器的验证dict, 秘密数据, 只有服务器能看
         witness['sk'] = sk;
         witness['r'] = r;
         witness['bTransfer'] = bTransfer;

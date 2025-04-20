@@ -29,7 +29,7 @@ bn128.zero = bn128.curve.g.mul(0); // 无穷远点, 单位元
 bn128.p = BN.red(bn128.curve.p);
 bn128.q = BN.red(bn128.curve.n); // GROUP_MODULUS
 
-bn128.randomScalar = () => new BN(crypto.randomBytes(32), 16).toRed(bn128.q); // 生成32字节16进制数再模q, 相当于生成随机数
+bn128.randomScalar = () => new BN(crypto.randomBytes(32), 16).toRed(bn128.q); // 生成2^256内的随机数, 用16进制表示
 bn128.bytes = (i) => "0x" + i.toString(16, 64); // 大整数i -> 0x + 64位16进制 构成的字符串
 bn128.serialize = (point) => { // differs from point.encode('hex'). ethereum-compatible
     // 将椭圆曲线点转化为以太坊兼容的格式, 也就是0x + 64位16进制构成的字符串

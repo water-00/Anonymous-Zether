@@ -102,7 +102,7 @@ class Client {
                                 }
                                 
                                 if (delta > 0) {
-                                    console.log("Successfully received delta = " + delta + "!")
+                                    // console.log("Successfully received delta = " + delta + "!")
                                     // console.log("sk before update: ", account.keypair['x'].fromRed());
                                     // console.log("pk before update: ", bn128.serialize(account.keypair['y']));
                                     account.keypair['x'] = account.keypair['x'].fromRed().add(new BN(delta)).toRed(bn128.q);
@@ -402,8 +402,7 @@ class Client {
                     // console.log("new_y[0]: ", bn128.serialize(new_y[0]));
 
 
-                    // index没了啊, 先随便填一下
-                    const index = [0, 1];
+                    const index = [0, 1]; // 原代码中洗牌算法得到的index没了, 先随便填一下
                     const proof = Service.proveTransfer(Cn, C, y, state.lastRollOver, account.keypair['x'], r, totalValue, state.available - totalValue - fee, index, fee);
                     const u = utils.u(state.lastRollOver, account.keypair['x']); // 大概意思是生成 私钥 + epoch的加密标识: u = G_{epoch}*x
                     // 这样每个epoch每个私钥x都只能有一个u (nonce), 所以在过期的交易记录没法在新epoch通过, 避免重放攻击
@@ -462,15 +461,15 @@ class Client {
                                 console.log("Transfer of " + totalValue + " (with fee of " + fee + ") was successful. Balance now " + (account._state.available + account._state.pending) + ".");
 
                                 // 更新friends中存的公钥信息
-                                console.log("friends pks before updated:");
+                                // console.log("friends pks before updated:");
                                 names.forEach((name) => {
-                                    console.log(bn128.serialize(friends[name]));
+                                    // console.log(bn128.serialize(friends[name]));
                                     friends[name] = bn128.curve.g.mul(delta).add(friends[name]);
                                 });
 
-                                console.log("friends pks after updated:");
+                                // console.log("friends pks after updated:");
                                 names.forEach((name) => {
-                                    console.log(bn128.serialize(friends[name]));
+                                    // console.log(bn128.serialize(friends[name]));
                                 });
 
 

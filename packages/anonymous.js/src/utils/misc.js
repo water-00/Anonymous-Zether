@@ -6,10 +6,12 @@ const { FieldVector } = require('./algebra.js');
 class Polynomial {
     constructor(coefficients) {
         this.coefficients = coefficients; // vector of coefficients, _little_ endian.
-        this.mul = (other) => { // i assume that other has coeffs.length == 2, and monic if linear.
+
+        this.mul = (other) => { // this与other相乘, other是二项式, len(other.coeffs) == 2
             const product = this.coefficients.map((coefficient) => coefficient.redMul(other.coefficients[0]));
             product.push(new BN(0).toRed(bn128.q));
-            if (other.coefficients[1].eqn(1)) this.coefficients.forEach((elem, i) => product[i + 1] = product[i + 1].redAdd(elem));
+            if (other.coefficients[1].eqn(1)) // b_k == 1
+                 this.coefficients.forEach((elem, i) => product[i + 1] = product[i + 1].redAdd(elem));
             return new Polynomial(product);
         }
     }
@@ -21,7 +23,7 @@ class FieldVectorPolynomial {
 
         this.evaluate = (x) => {
             let result = coefficients[0];
-            let accumulator = x;
+            let accumulator = x; 
             coefficients.slice(1).forEach((coefficient) => {
                 result = result.add(coefficient.times(accumulator));
                 accumulator = accumulator.redMul(x);
