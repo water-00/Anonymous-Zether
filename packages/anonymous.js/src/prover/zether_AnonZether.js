@@ -17,8 +17,6 @@ class ZetherProof {
             result += bn128.representation(this.A.point()).slice(2);
             result += bn128.representation(this.B.point()).slice(2);
 
-            // 序列化各种向量, 比如CnG应该是一个向量数组, 然后对每个元素的左右分量 (每个分量都是一个椭圆曲线点) 序列化
-            // 这些变量都是从哪来的...
             this.CnG.forEach((CnG_k) => { result += bn128.representation(CnG_k.left()).slice(2); });
             this.CnG.forEach((CnG_k) => { result += bn128.representation(CnG_k.right()).slice(2); });
             this.C_0G.forEach((C_0G_k) => { result += bn128.representation(C_0G_k.left()).slice(2); });
@@ -110,16 +108,6 @@ class ZetherProof {
         const f = new FieldVector([a.getVector()[b.getVector()[0].toNumber() * m], a.getVector()[b.getVector()[m].toNumber() * m].redNeg()]); // [a[b[0]*m] * m, -a[b[m]*m] * m]
         result.A = PedersenVectorCommitment.commit(a, d.concat(e)); // warning: semantic change for contract
         result.B = PedersenVectorCommitment.commit(b, c.concat(f)); // warning: semantic change for contract
-
-        // console.log("m: ", m);
-        // console.log("a: ", a.getVector());
-        // console.log("b: ", b.getVector());
-        // console.log("c: ", c.getVector());
-        // console.log("d: ", d.getVector());
-        // console.log("e: ", e.getVector());
-        // console.log("f: ", f.getVector());
-        // console.log("d.concat(e): ", d.concat(e).getVector());
-        // console.log("c.concat(f): ", c.concat(f).getVector());
 
         const v = utils.hash(ABICoder.encodeParameters([
             'bytes32',
@@ -247,13 +235,6 @@ class ZetherProof {
         result.T_1 = PedersenCommitment.commit(tPolyCoefficients[1]);
         result.T_2 = PedersenCommitment.commit(tPolyCoefficients[2]);
 
-        // console.log("ys: ", ys.getVector());
-        // console.log("z: ", z);
-        // console.log("al - z: ", aL.plus(z.redNeg()).getVector());
-        // console.log("l(x): ", lPoly.getCoefficients()[0].getVector(), lPoly.getCoefficients()[1].getVector());
-        // console.log("r(x): ", rPoly.getCoefficients()[0].getVector(), rPoly.getCoefficients()[1].getVector());
-
-
         // 最终挑战值, z, t1, t2能绑定前面一堆东西
         const x = utils.hash(ABICoder.encodeParameters([
             'bytes32',
@@ -361,4 +342,4 @@ class ZetherProof {
     }
 }
 
-module.exports = ZetherProof;
+// module.exports = ZetherProof;

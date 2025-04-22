@@ -64,7 +64,7 @@ class Client {
                 if (event.returnValues['parties'] === null) return; // truffle is sometimes emitting spurious (虚假的) empty events??? have to avoid this case manually.
                 event.returnValues['parties'].forEach((party, i) => {
                     // parties内容 = 发送方, 接收方, 混淆地址的公钥们
-                    if (account.keypair['y'].eq(bn128.deserialize(party))) { // bn128.deserialize: 把公钥地址反序列化为椭圆曲线点. 
+                    if (account.keypair['y'].eq(bn128.deserialize(party))) { // bn128.deserialize: 把公钥地址反序列化为椭圆曲线点.
                     // 可能keypair['x'], keypair['y']代表account的私钥和公钥点, Y = x \cdot G. ['x']是随机生成的BN大整数, ['y']是公钥在椭圆曲线上的点, 由(y.x, y.y)组成
                         const blockNumber = event.blockNumber;
                         web3.eth.getBlock(blockNumber).then((block) => {
@@ -76,7 +76,7 @@ class Client {
                                         inputs = element['inputs']; // JSON文件中的'inputs'字段表示方法的参数列表, 所以这里是在TransferOccurred事件发生后获得`transfer`方法的参数列表
                                 });
                                 // 把`transfer`方法的参数列表inputs (二进制数据) 转换为可读的参数, slice(10)表明从第10个十六进制字符开始截, 跳过前10个字符(0x + 4字节函数选择器), 剩下的就是参数数据
-                                const parameters = web3.eth.abi.decodeParameters(inputs, "0x" + transaction.input.slice(10)); 
+                                const parameters = web3.eth.abi.decodeParameters(inputs, "0x" + transaction.input.slice(10));
                                 // console.log("parameters['C'][i].x: ", parameters['C'][i].x);
                                 // console.log("parameters['C'][i].y: ", parameters['C'][i].y);
                                 // console.log("parameters['D'].x: ", parameters['D'].x);
@@ -100,7 +100,7 @@ class Client {
                                     // 可以看到这一行在转账后的接收方的console中有输出, 这也映证了监听事件函数是作为"接收方"监听, 对于自己是"发送方"的交易通过transfers集合跳过监听.
                                     console.log("Transfer of " + value + " received! Balance now " + (account._state.available + account._state.pending) + ".");
                                 }
-                                
+
                                 if (delta > 0) {
                                     // console.log("Successfully received delta = " + delta + "!")
                                     // console.log("sk before update: ", account.keypair['x'].fromRed());
@@ -198,9 +198,9 @@ class Client {
                             });
                     } else { // 传入了私钥->恢复密钥对
                         const x = new BN(secret.slice(2), 16).toRed(bn128.q);
-                        that.account.keypair = { 
-                            'x': x, 
-                            'y': bn128.curve.g.mul(x) 
+                        that.account.keypair = {
+                            'x': x,
+                            'y': bn128.curve.g.mul(x)
                         };
                         zsc.methods.simulateAccounts([bn128.serialize(this.account.keypair['y'])], getEpoch() + 1) // 传入公钥和下一周期
                         .call().then((result) => {
@@ -255,11 +255,11 @@ class Client {
             const seconds = Math.ceil(wait / 1000);
             const plural = seconds === 1 ? "" : "s";
             if (totalValue > state.available) { // 前面已经检查过available + pending是够的, 但这里available不够, 说明account有一部分pending余额需要等下一个epoch释放
-                console.log("Your transfer has been queued. Please wait " + seconds + " second" + plural + ", for the release of your funds...");
+                console.log("Your transfer totalValue = " + totalValue + " has been queued. Please wait " + seconds + " second" + plural + ", for the release of your funds...");
                 return sleep(wait).then(() => this.transfer(names, values, beneficiary));
             }
             if (state.nonceUsed) { // nonce已用, 每个epoch只允许一次转账
-                console.log("Your transfer has been queued. Please wait " + seconds + " second" + plural + ", until the next epoch...");
+                console.log("Your transfer totalValue = " + totalValue + " has been queued. Please wait " + seconds + " second" + plural + ", until the next epoch...");
                 return sleep(wait).then(() => this.transfer(names, values, beneficiary));
             }
             const size = 1 + names.length; // 匿名集大小
@@ -300,76 +300,52 @@ class Client {
             if (beneficiary !== undefined && !(beneficiary in friends)) // ZSC合约手续费地址
                 throw "Beneficiary \"" + beneficiary + "\" is not known!";
 
-            // 一整个洗牌算法在多个receiver的情况下我就先只能注释掉了
-            // const index = [];
-            // let m = y.length;
-            // while (m !== 0) { // https://bost.ocks.org/mike/shuffle/
-            //     // Fisher-Yates 洗牌算法: 从后往前遍历, 每次把最后一个元素y[m]与y[0, m-1]之间一个随机元素交换, 然后m--
-            //     // randomBytes(1).readUInt8(): 
-            //     const i = crypto.randomBytes(1).readUInt8() % m--; // 从[0, 255]生成一个随机数, 然后mod m, 因此当m不是256的约数时采样结果并不是均匀分布的
-            //     // 比如m = 127, [0, 255] mod m结果为0, 1的概率为3/255, 2-126的概率为2/255, 这就是modulo bias
-            //     // AI建议: 采用Rejection Sampling消除modulo bias
-
-            //     // 交换y[i], y[m]
-            //     const temp = y[i];
-            //     y[i] = y[m];
-            //     y[m] = temp;
-
-            //     // 记录发送方, 接收方地址被交换后的位置
-            //     if (account.keypair['y'].eq(temp)) index[0] = m;
-            //     else if (friends[name].eq(temp)) index[1] = m;
-            // } // shuffle the array of y's
-            // if (index[0] % 2 === index[1] % 2) {
-            //     // 要求发送方和接收方的索引奇偶性不同 (why?), 如果相同的话就把接收方和邻居换一下位置
-            //     const temp = y[index[1]];
-            //     y[index[1]] = y[index[1] + (index[1] % 2 === 0 ? 1 : -1)];
-            //     y[index[1] + (index[1] % 2 === 0 ? 1 : -1)] = temp;
-            //     index[1] = index[1] + (index[1] % 2 === 0 ? 1 : -1);
-            // } // make sure you and your friend have opposite parity
-
             return new Promise((resolve, reject) => {
                 // y.map: 对y的每个元素 (椭圆曲线点[y.x, y.y]) 调用bn128.serialize得到公钥, simulateAccounts返回所有用户上一轮结束时的账户余额(oC[i], oD[i]) (序列化格式)
                 zsc.methods.simulateAccounts(y.map(bn128.serialize), getEpoch()).call().then((result) => {
                     // const deserialized = result.map((account) => ElGamal.deserialize(account));
-                    const deserialized = result.map(ElGamal.deserialize); // 序列化坐标反序列化为数值, 然后转换为ElGamal格式, (oC[i], oD[i]) 
+                    const deserialized = result.map(ElGamal.deserialize); // 序列化坐标反序列化为数值, 然后转换为ElGamal格式, (oC[i], oD[i])
                     // 其实ElGamal格式就只是把两个bn128.point放在一起而已, deserialized.map(bn128.serialize)就又回到result = (oC[i], oD[i]) 了
                     // console.log("result: ", result);
-                    // console.log("deserialized: ", deserialized);
+                    // console.log("deserialized: ");
                     // deserialized.map(account => {
-                    //     console.log(bn128.serialize(account.left()));
-                    //     console.log(bn128.serialize(account.right()));
+                    //     console.log("account.left():", bn128.serialize(account.left()));
+                    //     console.log("account.right():", bn128.serialize(account.right()));
                     // })
 
                     if (deserialized.some((account) => account.zero())) // ElGamal.zero(), 公钥或私钥为bn128.zero
                         return reject(new Error("Please make sure all parties are registered.")); // todo: better error message, i.e., which friend?
-                    
-                    
+
+
                     const r = bn128.randomScalar(); // 随机数, 一种可能的作用是当adjustment相同时, 也有r*y[i]使得每个地址的C[i]很不同, 避免泄露转账金额信息
                     const D = bn128.curve.g.mul(r); // D = g*r
                     const C = y.map((party, i) => { // 所有用户的余额变化信息(C[i], D)
-                        // const adjustment = new BN(i === index[0] ? -value - fee : i === index[1] ? value : 0);
                         const adjustment = new BN(i === 0 ? -totalValue-fee : values[i-1]);
                         // console.log("adjustment: ", adjustment) // new BN(num)就可以将num映射到椭圆曲线群中, 使用toString就能还原数字
                         // console.log("adjustment.toRed(): ", adjustment.toRed().toString()); // Error
                         // console.log("adjustment.fromRed(): ", adjustment.fromRed().toString()) // Error
 
                         const left = ElGamal.base['g'].mul(adjustment).add(party.mul(r)); // C[i] = y[i]*r + g*pl
-                        
+
                         // console.log("left.x: ", left.x.toString(16));
                         // console.log("left.y: ", left.y.toString(16));
                         // console.log("left.x.toRed(): ", left.x.toRed().toString(16)); // Error: Already a number in reduction context
                         // console.log("left.y.toRed(): ", left.y.toRed().toString(16));
                         // console.log("left.x.fromRed(): ", left.x.fromRed().toString(16));
                         // console.log("left.y.fromRed(): ", left.y.fromRed().toString(16));
-                        
+
                         return new ElGamal(left, D);
                     });
                     // 所有用户更新后的加密余额Cn: ElGamal[] = C: ElGamal[] + deserialized: ElGamal[]
-                    //  (nC[i], nD[i]) = (C[i], D) + (oC[i], oD[i])
-                    //                 = (y[i]*r + g*pl, g*r) + (y[i]*x + g*b[i], g*x)
-                    //                 = (y[i]*(r+x) + g*(pl+b[i]), g*(r+x))
-                    const Cn = deserialized.map((account, i) => account.add(C[i])); 
+                    // Cn = (nC[i], nD[i]) 
+                    //    = C + deserialized
+                    //    = (C[i], D) + (oC[i], oD[i])
+                    //    = (y[i]*r + g*pl[i], g*r) + (y[i]*x + g*b[i], g*x)
+                    //    = (y[i]*(r+x) + g*(pl[i]+b[i]), g*(r+x))
+                    const Cn = deserialized.map((account, i) => account.add(C[i]));
+                    const C0_prime = Cn[0].right().mul(account.keypair['x']).add(ElGamal.base['g'].mul(values[values.length-2])) // 论文中的D_0' = y[0]*(r+x) + g*pl[m-1]
                     
+                    // console.log("C0_prime: ", C0_prime);
                     // console.log("C: ", C);
                     // console.log("D: ", D);
                     // console.log("Cn: ", Cn);
@@ -396,14 +372,13 @@ class Client {
                     });
                     // up: 记录转账中每个用户的(y[i]*r'+ g*delta, g*r')
                     // C:  记录转账中每个用户的(y[i]*r + g*pl, g*r)
-                    
+
                     const new_y = y.map(party => ElGamal.base['g'].mul(delta).add(party)); // y[i]' = y[i] + g*delta
                     // console.log("y[0]: ", bn128.serialize(y[0])); // 忽然明白对于point优雅的打印方式就是bn128.serialize
                     // console.log("new_y[0]: ", bn128.serialize(new_y[0]));
 
-
-                    const index = [0, 1]; // 原代码中洗牌算法得到的index没了, 先随便填一下
-                    const proof = Service.proveTransfer(Cn, C, y, state.lastRollOver, account.keypair['x'], r, totalValue, state.available - totalValue - fee, index, fee);
+                    values = [totalValue, ...values];
+                    const proof = Service.proveTransfer(Cn, C, C0_prime, y, state.lastRollOver, account.keypair['x'], r, values, totalValue, state.available - totalValue - fee, fee);
                     const u = utils.u(state.lastRollOver, account.keypair['x']); // 大概意思是生成 私钥 + epoch的加密标识: u = G_{epoch}*x
                     // 这样每个epoch每个私钥x都只能有一个u (nonce), 所以在过期的交易记录没法在新epoch通过, 避免重放攻击
                     const throwaway = web3.eth.accounts.create();  // 生成一个临时账户作为链上的msg.sender, 用它的私钥签名这笔交易, 它仅执行这一笔交易就被丢弃
@@ -420,8 +395,8 @@ class Client {
 
                     const encoded = zsc.methods.transfer(
                         // 把一堆东西序列化然后丢给zsc.methods.transfer
-                        C.map((ciphertext) => bn128.serialize(ciphertext.left())), 
-                        bn128.serialize(D), 
+                        C.map((ciphertext) => bn128.serialize(ciphertext.left())),
+                        bn128.serialize(D),
                         [ // TransferParams 结构体参数 (up_left, up_right, E)
                             up.map((uplefttext) => bn128.serialize(uplefttext.left())), // up_left 数组
                             bn128.serialize(up_r), // up_right
@@ -429,14 +404,14 @@ class Client {
                         ],
                         y.map(bn128.serialize),
                         new_y.map(bn128.serialize), // new
-                        bn128.serialize(u), 
-                        proof.serialize(), 
+                        bn128.serialize(u),
+                        proof.serialize(),
                         bn128.serialize(beneficiaryKey)
-                    ).encodeABI(); 
+                    ).encodeABI();
                     // ABI = Application Binary Interface, 外部客户端调用合约的接口. 调用了某个合约的ABI就相当于固定了这个合约接下来被打包到区块后要执行的内容
                     // 这里有一个很重要的内容, encodeABI() 只是生成调用合约方法的编码数据 (生成交易的有效负载`data`), 不会触发任何链上操作-----写好支票内容尚未签名
                     // 把编码数据写进tx, 直到web3.eth.sendSignedTransaction成功广播tx后 (接收到.on('receipt')事件) 才会执行被编码进tx中的zsc.methods.transfer方法
-                    // web3.eth.sendSignedTransaction是原子操作, 一旦tx上链后zsc.methods.transfer emit TransferOccurred就会在同一区块完成, 
+                    // web3.eth.sendSignedTransaction是原子操作, 一旦tx上链后zsc.methods.transfer emit TransferOccurred就会在同一区块完成,
                     // 但是接收方监听到TransferOccurred后续处理花的时间可能超出resolve(receipt);返回的时间, 因为接收方监听器的处理不属于tx的内容
                     // 因此在调用完await alice.transfer()后还需要等100ms
 

@@ -374,7 +374,7 @@ BulletProof流程:
      \begin{align*}
      \vec l&=l(x) = \vec a_L-z\cdot \vec 1^n + \vec s_L\cdot x\in\mathbb Z_p^n\\
      \vec r &= r(x) = \vec y^n\odot(\vec a_R+z\cdot\vec 1^n + \vec s_R\cdot x) + z^2\cdot\vec 2^n \in\mathbb Z_p^n
-     \end{align*}
+     \end{align*}
      $$
      公式3: 保证$\hat t $是基于$\vec l, \vec r$算出来的.
 
@@ -420,6 +420,23 @@ $P=A\cdot S^x\cdot \vec g^{-z}\cdot(\vec h^\prime)^{z\cdot \vec y^{n\cdot m}}\pr
 <img src="img_md/image-20250417042330847.png" alt="image-20250417042330847" style="zoom:80%;" />
 
 <img src="img_md/image-20250417042352457.png" alt="image-20250417042352457" style="zoom:80%;" />
+$$
+
+\begin{align*}
+&k_{\text{sk}},k_r,k_\tau,k_b\leftarrow\mathbb F_q \\
+A_C&=g^{k_r}\\
+A_y&=g^{k_{\text{sk}}}\\
+A_b&=g^{k_b}\cdot(C^{-z^2}\cdot\text{nC}_0^{z^{m+1}})^{k_{\text{sk}}}\cdot \prod\limits^t_{j=1}(\text{pk}_j)^{k_r\cdot z^{2+j}}\\
+A_X &= \left(\prod\limits^t_{j=0}\text{pk}_j\right)^{k_r}\\
+A_\tau &= g^{-k_b}\cdot h^{k_\tau}\\
+&c = \text{Hash}(\hat t, \mu,A_C,A_y,A_b,A_X,A_\tau)\\
+s_{\text{sk}} &= k_{\text{sk}} + c\cdot \text{sk}\\
+s_r &= k_r+c\cdot r\\
+s_b &= k_b+c\cdot\sum\limits^m_{j=1}z^{1+j}\text{pl}_{j-1}\\
+s_\tau &= k_\tau + c\cdot\tau_x
+\end{align*}\\
+$$
+
 
 <img src="img_md/image-20250417042420906.png" alt="image-20250417042420906" style="zoom: 67%;" />
 
@@ -437,6 +454,8 @@ $P=A\cdot S^x\cdot \vec g^{-z}\cdot(\vec h^\prime)^{z\cdot \vec y^{n\cdot m}}\pr
 -   28-31: prover生成响应.
 -   32-37: verifier的校验
 
+>   注意, PriDe CT并没有要求参与人数一定是2的次幂, 所以对$t$没有要求. 也就是说$j=0$时是sender的信息, $j=1,\cdots ,t$时是$t$个receiver的接受信息. 那么$j =t^\prime-1$也算有一点意义吧, 就是倒数第二个receiver的接受信息, 可以在代码中获得.
+
 对校验等式的说明:
 
 34: $D_0^\prime$是个什么玩意儿? 根据它给出的式子反推$D_0^\prime = \text{nC}_0^{\text{sk}}\cdot g^{pl_{t^\prime-1}} = \text{pk}_0^{r+x}\cdot g^{pl_{t^\prime-1}}$, 那$t^\prime-1$又是什么东西??
@@ -448,3 +467,11 @@ $D_j = \text{pk}_j^r\cdot g^{pl_j}$
 $\text{nD}_0 = \text{nC}_0^{\text{sk}}\cdot g^{b-pl}$
 
 <img src="img_md/image-20250417150204996.png" alt="image-20250417150204996" style="zoom:67%;" />
+
+<img src="img_md/image-20250421010832032.png" alt="image-20250421010832032" style="zoom:67%;" />
+
+对于$A_r$的说明: 从$t_0 = \delta(y,z) + \sum\limits^{t^\prime}_{j=1}z^{1+j}\cdot pl_{j-1} = \delta(y,z) + z^2\cdot\lang\vec z^{t^\prime},\vec b\rang$可以得出$\vec b = (pl_0,\cdots,pl_{t^\prime-1})$. 那$s_b$也就可以写成
+$$
+s_b = k_b+c\cdot z^2\cdot\lang\vec z^{t^\prime},\vec b\rang
+$$
+然后以上证明过程make sense.

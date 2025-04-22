@@ -88,16 +88,6 @@ class PedersenVectorCommitment {
 
     constructor(point) {
         this._commit = (gValues, hValues, randomness) => { // first args of type FieldVector?!
-            // console.log("检查 gs 和 hs 的内容：");
-            // console.log("gs[0]:", PedersenVectorCommitment.base['gs'].getVector()[0].getX().toString());
-            // console.log("gs[0]:", PedersenVectorCommitment.base['gs'].getVector()[0].getY().toString());
-            // console.log("gs[1]:", PedersenVectorCommitment.base['gs'].getVector()[1].getX().toString());
-            // console.log("gs[1]:", PedersenVectorCommitment.base['gs'].getVector()[1].getY().toString());
-            // console.log("hs[0]:", PedersenVectorCommitment.base['hs'].getVector()[0].getX().toString());
-            // console.log("hs[0]:", PedersenVectorCommitment.base['hs'].getVector()[0].getY().toString());
-            // console.log("hs[1]:", PedersenVectorCommitment.base['hs'].getVector()[1].getX().toString());
-            // console.log("hs[1]:", PedersenVectorCommitment.base['hs'].getVector()[1].getY().toString());
-
             this.gValues = gValues;
             this.hValues = hValues;
             this.randomness = randomness;
@@ -110,6 +100,68 @@ class PedersenVectorCommitment {
 
     static commit(gValues, hValues) { // vectors of already-reduced BNs
         const result = new PedersenVectorCommitment(bn128.zero);
+        result._commit(gValues, hValues, bn128.randomScalar());
+        return result;
+    }
+}
+
+class PedersenLongVectorCommitment {
+    static bases = new Map(); // 缓存不同长度的生成元基
+
+    static getBase(n) {
+        if (!PedersenLongVectorCommitment.bases.has(n)) {
+            const gs = new PointVector(Array.from({ length: n }).map((_, i) => utils.mapInto(soliditySha3("G", i))));
+            const hs = new PointVector(Array.from({ length: n }).map((_, i) => utils.mapInto(soliditySha3("H", i))));
+            const h = utils.mapInto(soliditySha3("H"));
+            PedersenLongVectorCommitment.bases.set(n, { gs, hs, h });
+        }
+        return PedersenLongVectorCommitment.bases.get(n);
+    }
+
+    // 新增方法：获取特定长度 n 的 h 和 hs
+    static getBaseValues(n) {
+        const base = PedersenLongVectorCommitment.getBase(n);
+        return { h: base.h, hs: base.hs };
+    }
+
+    // 新增方法：设置特定长度 n 的 h 和 hs
+    static setBaseValues(n, newH, newHs) {
+        const base = PedersenLongVectorCommitment.getBase(n);
+        base.h = newH;
+        base.hs = newHs;
+        PedersenLongVectorCommitment.bases.set(n, base);
+    }
+
+    constructor(point, n) {
+        const base = PedersenLongVectorCommitment.getBase(n);
+        this._commit = (gValues, hValues, randomness) => {
+            if (gValues.length() !== n || hValues.length() !== n) {
+                throw new Error("向量长度与生成元长度不匹配");
+            }
+
+            this.gValues = gValues;
+            this.hValues = hValues;
+            this.randomness = randomness;
+            
+            // 计算承诺：h*r + sum(g_i*a_i) + sum(h_i*b_i)
+            let pointCalc = base.h.mul(randomness);
+            pointCalc = pointCalc.add(base.gs.multiExponentiate(gValues));
+            pointCalc = pointCalc.add(base.hs.multiExponentiate(hValues));
+            point = pointCalc;
+        };
+        this.point = () => point;
+    }
+
+    static commit(gValues, hValues) {
+        const n = gValues.length();
+        if (hValues.length() !== n) {
+            console.log("gValues.length: ", gValues.length());
+            console.log("hValues.length: ", hValues.length());
+            throw new Error("gValues和hValues长度必须相同");
+        }
+
+        const base = PedersenLongVectorCommitment.getBase(n);
+        const result = new PedersenLongVectorCommitment(bn128.zero, n);
         result._commit(gValues, hValues, bn128.randomScalar());
         return result;
     }
@@ -149,4 +201,4 @@ class ElGamal {
     }
 }
 
-module.exports = { PedersenCommitment, PedersenVectorCommitment, ElGamal, FieldVector, PointVector, ElGamalVector };
+module.exports = { PedersenCommitment, PedersenVectorCommitment, PedersenLongVectorCommitment, ElGamal, FieldVector, PointVector, ElGamalVector };
