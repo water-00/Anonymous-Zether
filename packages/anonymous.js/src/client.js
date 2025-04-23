@@ -51,10 +51,6 @@ class Client {
         zsc.events.TransferOccurred({}) // i guess this will just filter for "from here on out."
             // an interesting prospect is whether balance recovery could be eliminated by looking at past events.
             .on('data', (event) => {
-                // console.log("Raw event data:", event);
-                // console.log("Decoded parties:", event.returnValues['parties']);
-                // console.log("Beneficiary point:", event.returnValues['beneficiary']);
-                // console.log("Get in `zsc.events.TransferOccurred`"); // 不同的Transfer监听到TransferOccurred的次数不同, 还不知道监听到的次数和什么有关
                 if (transfers.has(event.transactionHash)) { // transfer集合表示由当前客户端发起的交易, 因此在transfer集合的交易不处理? 可能是交给对方客户端处理
                     transfers.delete(event.transactionHash);
                     return;
@@ -77,15 +73,6 @@ class Client {
                                 });
                                 // 把`transfer`方法的参数列表inputs (二进制数据) 转换为可读的参数, slice(10)表明从第10个十六进制字符开始截, 跳过前10个字符(0x + 4字节函数选择器), 剩下的就是参数数据
                                 const parameters = web3.eth.abi.decodeParameters(inputs, "0x" + transaction.input.slice(10));
-                                // console.log("parameters['C'][i].x: ", parameters['C'][i].x);
-                                // console.log("parameters['C'][i].y: ", parameters['C'][i].y);
-                                // console.log("parameters['D'].x: ", parameters['D'].x);
-                                // console.log("parameters['D'].y: ", parameters['D'].y);
-
-                                // console.log("parameters: ", parameters);
-                                // console.log("parameters.up_right: ", parameters['params']['up_right']);
-                                // console.log("parameters.up_left: ", parameters['params']['up_left'][i]);
-
 
                                 const value = utils.readBalance(parameters['C'][i], parameters['D'], account.keypair['x']);
                                 // C[i] = y[i]*r + g*pl 当前帐户在混淆地址列表中的加密余额 (椭圆曲线点)
@@ -360,7 +347,7 @@ class Client {
                     const numBytes = Math.ceil(range.bitLength() / 8);
                     const delta = new BN(crypto.randomBytes(numBytes)).add(min);
                     const f_delta = utils.KoblitzMapping(delta);
-                    console.log("random selected delta is: ", delta);
+                    // console.log("random selected delta is: ", delta);
                     const up_r = bn128.curve.g.mul(new_r); // g*r'
 
                     const E = Cn.map(Cn_i => Cn_i.right().mul(delta));  // E = nD[i] * delta = g * (r+x) * delta
@@ -487,10 +474,10 @@ class Client {
                 zsc.methods.simulateAccounts([bn128.serialize(account.keypair['y'])], getEpoch()).call()
                     .then((result) => {
                         // result = [CLn, CRn]
-                        console.log("result: ", result);
+                        // console.log("result: ", result);
                         const deserialized = ElGamal.deserialize(result[0]);
                         const C = deserialized.plus(new BN(-value)); // C = CLn - value
-                        console.log("state.available - value: ", state.available - value);
+                        // console.log("state.available - value: ", state.available - value);
                         const proof = Service.proveBurn(C, account.keypair['y'], state.lastRollOver, home, account.keypair['x'], state.available - value);
                         const u = utils.u(state.lastRollOver, account.keypair['x']);
                         zsc.methods.burn(bn128.serialize(account.keypair['y']), value, bn128.serialize(u), proof.serialize()).send({ 'from': home, 'gas': 6721975 })

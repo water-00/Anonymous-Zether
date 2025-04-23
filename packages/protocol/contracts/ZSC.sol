@@ -204,14 +204,14 @@ contract ZSC {
 
         // 因为原来transfer + verifyTransfer的参数数量超过了EVM的栈深度限制16
         // 所以要构造结构体参数 statement, 感觉耗时多了好久
-        // ZetherVerifier.ZetherStatement memory statement;
-        // statement.CLn = CLn;
-        // statement.CRn = CRn;
-        // statement.C = C;
-        // statement.D = D;
-        // statement.y = y;
-        // statement.epoch = lastGlobalUpdate;
-        // statement.u = u;
+        ZetherVerifier.ZetherStatement memory statement;
+        statement.CLn = CLn;
+        statement.CRn = CRn;
+        statement.C = C;
+        statement.D = D;
+        statement.y = y;
+        statement.epoch = lastGlobalUpdate;
+        statement.u = u;
 
         // require(zetherVerifier.verifyTransfer(statement, proof), "Transfer proof verification failed!");
 

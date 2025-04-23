@@ -158,7 +158,7 @@ class ZetherProof {
         PedersenLongVectorCommitment.setBaseValues(nm, hOld, hsOld);
 
 
-        // PriDe CT协议
+        // PriDe CT的Sigma协议
         const sk = witness.sk;
         const r_witness = witness.r;
         const values = witness.values;
@@ -279,7 +279,7 @@ class ZetherProof {
         result.s_b = s_b;
         result.s_tau = s_tau;
 
-        console.log("result: ", result);
+        // console.log("result: ", result);
         return result;
     }
 
@@ -295,7 +295,7 @@ class ZetherProof {
         result += bn128.bytes(this.tHat).slice(2);
         result += bn128.bytes(this.mu).slice(2);
 
-        // PriDe CT部分
+        // PriDe CT的Sigma协议部分
         result += bn128.representation(this.A_C).slice(2);
         result += bn128.representation(this.A_y).slice(2);
         result += bn128.representation(this.A_b).slice(2);

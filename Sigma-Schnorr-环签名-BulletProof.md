@@ -413,7 +413,7 @@ verifier验证部分:
 
 $g^{\hat t}\cdot h^{\tau_x}\overset{?}=\vec V^{z^2\cdot\vec z^m}\cdot g^{\delta(y,z)}\cdot T_1^x\cdot T_2^{x^2}$, $\vec V = (V_1,\cdots,V_m)$.
 
-$P=A\cdot S^x\cdot \vec g^{-z}\cdot(\vec h^\prime)^{z\cdot \vec y^{n\cdot m}}\prod\limits^m_{j=1}(\vec h^\prime)^{z^{j+1}\cdot 2^n}_{(j-1)n:jn-1}$
+$P=A\cdot S^x\cdot \vec g^{-z}\cdot(\vec h^\prime)^{z\cdot \vec y^{n\cdot m}}\prod\limits^m_{j=1}(\vec h^\prime)^{z^{j+1}\cdot \vec 2^n}_{(j-1)n:jn-1}$
 
 ### PriDe CT协议
 
@@ -421,13 +421,12 @@ $P=A\cdot S^x\cdot \vec g^{-z}\cdot(\vec h^\prime)^{z\cdot \vec y^{n\cdot m}}\pr
 
 <img src="img_md/image-20250417042352457.png" alt="image-20250417042352457" style="zoom:80%;" />
 $$
-
 \begin{align*}
 &k_{\text{sk}},k_r,k_\tau,k_b\leftarrow\mathbb F_q \\
 A_C&=g^{k_r}\\
 A_y&=g^{k_{\text{sk}}}\\
-A_b&=g^{k_b}\cdot(C^{-z^2}\cdot\text{nC}_0^{z^{m+1}})^{k_{\text{sk}}}\cdot \prod\limits^t_{j=1}(\text{pk}_j)^{k_r\cdot z^{2+j}}\\
-A_X &= \left(\prod\limits^t_{j=0}\text{pk}_j\right)^{k_r}\\
+A_b&=g^{k_b}\cdot(C^{-z^2}\cdot\text{nC}_0^{z^{m+1}})^{k_{\text{sk}}}\cdot \prod\limits^m_{j=1}(\text{pk}_j)^{k_r\cdot z^{2+j}}\\
+A_X &= \left(\prod\limits^m_{j=0}\text{pk}_j\right)^{k_r}\\
 A_\tau &= g^{-k_b}\cdot h^{k_\tau}\\
 &c = \text{Hash}(\hat t, \mu,A_C,A_y,A_b,A_X,A_\tau)\\
 s_{\text{sk}} &= k_{\text{sk}} + c\cdot \text{sk}\\
@@ -438,7 +437,27 @@ s_\tau &= k_\tau + c\cdot\tau_x
 $$
 
 
-<img src="img_md/image-20250417042420906.png" alt="image-20250417042420906" style="zoom: 67%;" />
+<img src="img_md/image-20250423023830099.png" alt="image-20250423023830099" style="zoom:60%;" />
+
+
+
+
+$$
+\begin{align*}
+A_y&\overset{?}= g^{s_{\text{sk}}}\cdot\text{pk}_0^{-c}\\
+A_C&\overset{?}=g^{s_r}\cdot C^{-c}\\
+\dfrac{A_b}{g^{s_b}}&\overset{?}=\dfrac{\left(C^{-z^2}\cdot\text{nC}_0^{z^{m+1}} \right)^{s_{\text{sk}}}}{\left(D_0^{-z^2}\cdot D_0^{\prime z^{m+1}}\right)^c}\cdot\prod\limits^m_{t=1}\left(\dfrac{\text{pk}_j^{s_r}}{D_j^c}\right) ^{z^{j+2}}\\
+A_X&\overset{?}=\left(\prod\limits^m_{j=0}\text{pk}_j\right)^{s_r}\cdot\left(\prod\limits^m_{j=0}D_j\right)^{-c}\\
+\delta(y,z) &\overset{?}= (z-z^2)\lang\vec 1^{mn},\vec y^{mn}\rang-\sum\limits^m_{j=1}(z^{j+2}\lang\vec 1^{n},\vec 2^{n}\rang)\\
+g^{c\cdot\hat t}\cdot h^{s_r} &\overset{?}=g^{c\cdot\delta(y,z)}\cdot g^{s_b}\cdot A_\tau\cdot(T_1^x\cdot T_2^{x^2})^c
+\end{align*}
+$$
+protocol 1 of [23] (Bulletproofs: Short proofs for confidential transactions and more) 的内容是: 
+
+-   输入$(\vec g,\vec h^\prime,Ph^{-\mu},\hat t;\vec l,\vec r)$, 其中$\vec h^\prime = \vec h^{\vec y^{-mn}} = (h_0,h_1^{y^{-1}},h_2^{y^{-2}},\cdots, h_{mn-1}^{y^{-mn+1}})$
+-   $P=A\cdot S^x\cdot \vec g^{-z}\cdot(\vec h^\prime)^{z\cdot \vec y^{mn}}\prod\limits^m_{j=1}(\vec h^\prime)^{z^{j+1}\cdot \vec 2^n}_{(j-1)n:jn-1}$
+
+
 
 -   1-8: prover对$\vec a_L,\vec a_R, \vec s_L,\vec s_R$生成承诺$A,S$
 -   9: verifier发送挑战$y,z$
@@ -475,3 +494,4 @@ $$
 s_b = k_b+c\cdot z^2\cdot\lang\vec z^{t^\prime},\vec b\rang
 $$
 然后以上证明过程make sense.
+
